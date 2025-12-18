@@ -73,18 +73,7 @@ def _check_user(username: str, password: str) -> bool:
             return True
     return False
 
-
-def require_login(app_name=" التأخير والغياب"):
-    # تحميل الحالة من الكوكيز لو الجلسة غير مهيأة
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
-
-    if not st.session_state.get("logged_in", False):
-        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
-
-    if not st.session_state.get("login_user", ""):
-        st.session_state["login_user"] = cookies.get("login_user", "")
-
+def require_login(app_name="التأخير والغياب"):
     # ===== شاشة تسجيل الدخول =====
     if not st.session_state.get("logged_in", False):
         st.markdown("""
@@ -106,11 +95,6 @@ def require_login(app_name=" التأخير والغياب"):
             if _check_user(username.strip(), password):
                 st.session_state["logged_in"] = True
                 st.session_state["login_user"] = username.strip()
-
-                cookies["logged_in"] = "true"
-                cookies["login_user"] = username.strip()
-                cookies.save()
-
                 st.rerun()
             else:
                 st.error("❌ بيانات الدخول غير صحيحة")
@@ -127,6 +111,7 @@ def require_login(app_name=" التأخير والغياب"):
         """,
         unsafe_allow_html=True,
     )
+
 
 
 # =========================
@@ -724,11 +709,7 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button("🚪 تسجيل خروج", use_container_width=True):
-        cookies["logged_in"] = "false"
-        cookies["login_user"] = ""
-        cookies.save()
-
-        st.session_state["logged_in"] = False
-        st.session_state["login_user"] = ""
-        st.rerun()
+if st.button("🚪 تسجيل خروج", use_container_width=True):
+    st.session_state["logged_in"] = False
+    st.session_state["login_user"] = ""
+    st.rerun()
