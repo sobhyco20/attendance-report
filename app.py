@@ -469,7 +469,15 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t)
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-        story.append(Paragraph(ar(f"✅ إجمالي دقائق التأخير: {total_late}"), total_style))
+            h, m = minutes_to_hours_minutes(total_late)
+        
+            story.append(
+                Paragraph(
+                    ar(f"✅ إجمالي التأخير: {h} ساعة و {m} دقيقة"),
+                    total_style
+                )
+            )
+
 
 
     story.append(Spacer(1, 14))
