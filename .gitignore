@@ -1,0 +1,18 @@
+# Python virtual env
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Streamlit secrets & local config
+.streamlit/
+secrets.toml
+
+# Generated / local data
+*.xlsx
+data/
+
+# OS / IDE
+.DS_Store
+.vscode/
