@@ -30,16 +30,6 @@ from bidi.algorithm import get_display
 st.set_page_config(page_title="Attendance Report", layout="wide")
 
 
-# =========================
-# Cookies
-# =========================
-cookies = EncryptedCookieManager(
-    prefix="attendance_app",
-    password="super-secret-password-change-me"
-)
-if not cookies.ready():
-    st.stop()
-
 
 # =========================
 # Session State Init (مهم)
