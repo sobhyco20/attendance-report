@@ -21,7 +21,7 @@ from reportlab.lib.utils import ImageReader
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-from streamlit_cookies_manager import EncryptedCookieManager
+
 
 
 # =========================
