@@ -697,6 +697,7 @@ with st.sidebar:
     else:
         st.info("ارفع ملف البصمة أولاً ليظهر زر تحميل PDF.")
 
+    st.image("assets/222003582.jpg", use_container_width=True)
     st.divider()
 
     if st.button("🚪 تسجيل خروج", use_container_width=True):
