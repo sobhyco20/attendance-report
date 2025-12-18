@@ -22,6 +22,11 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 
 
+def minutes_to_hours_minutes(total_minutes: int):
+    total_minutes = int(total_minutes or 0)
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    return hours, minutes
 
 
 # =========================
@@ -465,6 +470,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
         story.append(Paragraph(ar(f"✅ إجمالي دقائق التأخير: {total_late}"), total_style))
+
 
     story.append(Spacer(1, 14))
 
