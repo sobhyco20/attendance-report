@@ -522,7 +522,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t2)
         story.append(Spacer(1, 6))
         absent_days = int(emp_row.get("absent_days", 0) or 0)
-        story.append(Paragraph(ar(f"🚫 عدد أيام الغياب: {absent_days}"), total_style))
+        story.append(Paragraph(ar(f"• عدد أيام الغياب: {absent_days}"), total_style))
 
     doc.build(story, onFirstPage=on_first_page)
     return buf.getvalue()
