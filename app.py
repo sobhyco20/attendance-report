@@ -477,7 +477,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         
         story.append(
             Paragraph(
-                ar(f"✅ إجمالي التأخير: {h} ساعة و {m} دقيقة"),
+                ar(f"• إجمالي التأخير: {h} ساعة و {m} دقيقة"),
                 total_style
             )
         )
