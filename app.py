@@ -699,7 +699,7 @@ with st.sidebar:
 
     st.divider()
 
-if st.button("🚪 تسجيل خروج", use_container_width=True):
-    st.session_state["logged_in"] = False
-    st.session_state["login_user"] = ""
-    st.rerun()
+    if st.button("🚪 تسجيل خروج", use_container_width=True):
+        st.session_state["logged_in"] = False
+        st.session_state["login_user"] = ""
+        st.rerun()
