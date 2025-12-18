@@ -28,7 +28,11 @@ def minutes_to_hours_minutes(total_minutes: int):
     minutes = total_minutes % 60
     return hours, minutes
 
-
+def minutes_to_hm(total_minutes):
+    total_minutes = int(total_minutes or 0)
+    h = total_minutes // 60
+    m = total_minutes % 60
+    return h, m
 # =========================
 # إعدادات الصفحة (لازم أول شيء)
 # =========================
@@ -606,8 +610,16 @@ st.caption(f"{fri_note} • {sat_note}")
 
 # KPIs
 k1, k2, k3 = st.columns(3)
+total_late = int(emp.get("total_late_minutes", 0) or 0)
+h, m = minutes_to_hm(total_late)
+
 k1.markdown(
-    f'<div class="kpi"><div class="v">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="l">إجمالي دقائق التأخير</div></div>',
+    f'''
+    <div class="kpi">
+        <div class="v">{h}س  {m}د </div>
+        <div class="l">إجمالي التأخير</div>
+    </div>
+    ''',
     unsafe_allow_html=True
 )
 k2.markdown(
