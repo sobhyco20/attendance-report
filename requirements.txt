@@ -4,3 +4,4 @@ openpyxl
 reportlab
 arabic-reshaper
 python-bidi
+streamlit-cookies-manager

@@ -21,24 +21,23 @@ from reportlab.lib.utils import ImageReader
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-from streamlit_cookies_manager import EncryptedCookieManager
 
+def minutes_to_hours_minutes(total_minutes: int):
+    total_minutes = int(total_minutes or 0)
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    return hours, minutes
 
+def minutes_to_hm(total_minutes):
+    total_minutes = int(total_minutes or 0)
+    h = total_minutes // 60
+    m = total_minutes % 60
+    return h, m
 # =========================
 # إعدادات الصفحة (لازم أول شيء)
 # =========================
 st.set_page_config(page_title="Attendance Report", layout="wide")
 
-
-# =========================
-# Cookies
-# =========================
-cookies = EncryptedCookieManager(
-    prefix="attendance_app",
-    password="super-secret-password-change-me"
-)
-if not cookies.ready():
-    st.stop()
 
 
 # =========================
@@ -73,18 +72,7 @@ def _check_user(username: str, password: str) -> bool:
             return True
     return False
 
-
-def require_login(app_name=" التأخير والغياب"):
-    # تحميل الحالة من الكوكيز لو الجلسة غير مهيأة
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
-
-    if not st.session_state.get("logged_in", False):
-        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
-
-    if not st.session_state.get("login_user", ""):
-        st.session_state["login_user"] = cookies.get("login_user", "")
-
+def require_login(app_name="التأخير والغياب"):
     # ===== شاشة تسجيل الدخول =====
     if not st.session_state.get("logged_in", False):
         st.markdown("""
@@ -106,11 +94,6 @@ def require_login(app_name=" التأخير والغياب"):
             if _check_user(username.strip(), password):
                 st.session_state["logged_in"] = True
                 st.session_state["login_user"] = username.strip()
-
-                cookies["logged_in"] = "true"
-                cookies["login_user"] = username.strip()
-                cookies.save()
-
                 st.rerun()
             else:
                 st.error("❌ بيانات الدخول غير صحيحة")
@@ -127,6 +110,7 @@ def require_login(app_name=" التأخير والغياب"):
         """,
         unsafe_allow_html=True,
     )
+
 
 
 # =========================
@@ -489,7 +473,16 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t)
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-        story.append(Paragraph(ar(f"✅ إجمالي دقائق التأخير: {total_late}"), total_style))
+        h, m = minutes_to_hours_minutes(total_late)
+        
+        story.append(
+            Paragraph(
+                ar(f"• إجمالي التأخير: {h} ساعة و {m} دقيقة"),
+                total_style
+            )
+        )
+
+
 
     story.append(Spacer(1, 14))
 
@@ -529,7 +522,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t2)
         story.append(Spacer(1, 6))
         absent_days = int(emp_row.get("absent_days", 0) or 0)
-        story.append(Paragraph(ar(f"🚫 عدد أيام الغياب: {absent_days}"), total_style))
+        story.append(Paragraph(ar(f"• عدد أيام الغياب: {absent_days}"), total_style))
 
     doc.build(story, onFirstPage=on_first_page)
     return buf.getvalue()
@@ -617,8 +610,16 @@ st.caption(f"{fri_note} • {sat_note}")
 
 # KPIs
 k1, k2, k3 = st.columns(3)
+total_late = int(emp.get("total_late_minutes", 0) or 0)
+h, m = minutes_to_hm(total_late)
+
 k1.markdown(
-    f'<div class="kpi"><div class="v">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="l">إجمالي دقائق التأخير</div></div>',
+    f'''
+    <div class="kpi">
+        <div class="v">{h}س  {m}د </div>
+        <div class="l">إجمالي التأخير</div>
+    </div>
+    ''',
     unsafe_allow_html=True
 )
 k2.markdown(
@@ -722,13 +723,10 @@ with st.sidebar:
     else:
         st.info("ارفع ملف البصمة أولاً ليظهر زر تحميل PDF.")
 
+    st.image("assets/222003582.jpg", use_container_width=True)
     st.divider()
 
     if st.button("🚪 تسجيل خروج", use_container_width=True):
-        cookies["logged_in"] = "false"
-        cookies["login_user"] = ""
-        cookies.save()
-
         st.session_state["logged_in"] = False
         st.session_state["login_user"] = ""
         st.rerun()
