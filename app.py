@@ -1,3 +1,4 @@
+# app.py
 import os
 import re
 from io import BytesIO
@@ -28,40 +29,61 @@ def minutes_to_hours_minutes(total_minutes: int):
     minutes = total_minutes % 60
     return hours, minutes
 
+
 def minutes_to_hm(total_minutes):
     total_minutes = int(total_minutes or 0)
     h = total_minutes // 60
     m = total_minutes % 60
     return h, m
+
+
 # =========================
-# إعدادات الصفحة (لازم أول شيء)
+# إعدادات الصفحة
 # =========================
 st.set_page_config(page_title="Attendance Report", layout="wide")
 
 
-
 # =========================
-# Session State Init (مهم)
+# Session State Init
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
-
 if "login_user" not in st.session_state:
     st.session_state["login_user"] = ""
+
+
+# =========================
+# Query Params helpers (تثبيت الدخول مع Refresh)
+# =========================
+def _get_qp():
+    try:
+        return dict(st.query_params)
+    except Exception:
+        return st.experimental_get_query_params()
+
+
+def _set_qp(**kwargs):
+    try:
+        for k, v in kwargs.items():
+            st.query_params[k] = v
+    except Exception:
+        st.experimental_set_query_params(**kwargs)
+
+
+def _clear_qp():
+    try:
+        st.query_params.clear()
+    except Exception:
+        st.experimental_set_query_params()
 
 
 # =========================
 # Auth helpers
 # =========================
 def _get_users():
-    """
-    1) يحاول قراءة المستخدمين من secrets.toml
-    2) لو secrets غير موجود → fallback محلي حتى لا ينهار البرنامج
-    """
     try:
         return st.secrets.get("app_auth", {}).get("users", [])
     except Exception:
-        # fallback محلي (غير مناسب للإنتاج)
         return [{"username": "admin", "password": "1234"}]
 
 
@@ -72,15 +94,26 @@ def _check_user(username: str, password: str) -> bool:
             return True
     return False
 
+
 def require_login(app_name="التأخير والغياب"):
-    # ===== شاشة تسجيل الدخول =====
+    qp = _get_qp()
+    qp_auth = str(qp.get("auth", [""])[0] if isinstance(qp.get("auth"), list) else qp.get("auth", "")).strip()
+    qp_user = str(qp.get("u", [""])[0] if isinstance(qp.get("u"), list) else qp.get("u", "")).strip()
+
+    if (not st.session_state.get("logged_in", False)) and qp_auth == "1" and qp_user:
+        st.session_state["logged_in"] = True
+        st.session_state["login_user"] = qp_user
+
     if not st.session_state.get("logged_in", False):
-        st.markdown("""
+        st.markdown(
+            """
         <style>
         section[data-testid="stSidebar"] { display: none !important; }
         .block-container{ max-width: 520px; padding-top: 80px; }
         </style>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         st.markdown(f"## 🔐 {app_name}")
         st.caption("الرجاء تسجيل الدخول للمتابعة")
@@ -94,13 +127,13 @@ def require_login(app_name="التأخير والغياب"):
             if _check_user(username.strip(), password):
                 st.session_state["logged_in"] = True
                 st.session_state["login_user"] = username.strip()
+                _set_qp(auth="1", u=st.session_state["login_user"])
                 st.rerun()
             else:
                 st.error("❌ بيانات الدخول غير صحيحة")
 
         st.stop()
 
-    # ===== بعد الدخول =====
     st.markdown(
         f"""
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -112,23 +145,21 @@ def require_login(app_name="التأخير والغياب"):
     )
 
 
-
 # =========================
-# مسارات
+# Paths
 # =========================
 EMP_PATH = os.path.join("data", "employees.xlsx")
 FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")
 LOGO_PATH = os.path.join("assets", "logo.png")
+SIDE_IMAGE_PATH = os.path.join("assets", "222003582.jpg")
 
 
 # =========================
 # CSS
 # =========================
-st.markdown("""
+st.markdown(
+    """
 <style>
-/* ======================================================
-   🎨 PALETTE – MODERN PROFESSIONAL HR
-====================================================== */
 section[data-testid="stSidebar"]{
   min-width: 380px !important;
   width: 380px !important;
@@ -175,9 +206,6 @@ section[data-testid="stSidebar"] > div{
   }
 }
 
-/* ======================================================
-   🧱 LAYOUT & TRANSITIONS
-====================================================== */
 * { transition: background-color 0.3s ease, border-color 0.3s ease; }
 
 .block-container { max-width: 1080px; padding-top: 2rem; }
@@ -194,9 +222,6 @@ html, body, [class*="css"] {
                     radial-gradient(at 100% 100%, rgba(79, 70, 229, 0.03) 0px, transparent 50%);
 }
 
-/* ======================================================
-   🧩 CARDS & KPI
-====================================================== */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -245,9 +270,6 @@ html, body, [class*="css"] {
   border-radius: 10px;
 }
 
-/* ======================================================
-   📋 UI ELEMENTS
-====================================================== */
 .list-item {
   background: var(--card-soft);
   border: 1px solid var(--border);
@@ -274,16 +296,14 @@ section[data-testid="stSidebar"] {
   border-left: 1px solid var(--border);
 }
 
-/* ======================================================
-   🚦 STATUS COLORS
-====================================================== */
 .ok { color: var(--success); }
 .warn { color: var(--warning); }
 .err { color: var(--danger); }
-
 .muted { color: var(--muted); }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # =========================
@@ -293,7 +313,7 @@ require_login("تقرير التأخير والغياب")
 
 
 # =========================
-# أدوات مساعدة
+# Helpers
 # =========================
 def load_employees_silent():
     if os.path.exists(EMP_PATH):
@@ -325,16 +345,17 @@ def fmt_date(d):
 
 
 def month_year_title(emp_row):
-    y, m = "", ""
-    p_to = emp_row.get("period_to", "")
+    # ✅ الآن يعتمد على payroll_month / payroll_year (الشهر التالي)
+    y = emp_row.get("payroll_year", "")
+    m = emp_row.get("payroll_month", "")
     try:
-        dt_to = pd.to_datetime(p_to)
-        y = dt_to.year
-        m = dt_to.month
+        y = int(y)
+        m = int(m)
     except Exception:
-        pass
+        y, m = "", ""
+
     if y and m:
-        return f"تقرير الموظف عن شهر {m:02d} - {y}"
+        return f"تقرير الموظف عن راتب شهر {m:02d} - {y}"
     return "تقرير الموظف"
 
 
@@ -344,7 +365,7 @@ def sanitize_filename(s: str) -> str:
     return s[:80] if s else "employee"
 
 
-WEEKDAY_AR = {
+WEEKDAY_AR_LOCAL = {
     "Saturday": "السبت",
     "Sunday": "الأحد",
     "Monday": "الإثنين",
@@ -357,7 +378,7 @@ WEEKDAY_AR = {
 
 def weekday_to_ar(x: str) -> str:
     s = safe_str(x)
-    return WEEKDAY_AR.get(s, s)
+    return WEEKDAY_AR_LOCAL.get(s, s)
 
 
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
@@ -386,10 +407,11 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
 
     name_ar_ = safe_str(emp_row.get("name_ar", ""))
     name_en_ = safe_str(emp_row.get("name_en", ""))
-    nat = safe_str(emp_row.get("nationality", ""))
+    nat = safe_str(emp_row.get("nationality_raw", emp_row.get("nationality", "")))
     emp_no = safe_str(emp_row.get("employee_no", ""))
     dept = safe_str(emp_row.get("department", ""))
     job = safe_str(emp_row.get("job_title", ""))
+    sched = safe_str(emp_row.get("schedule", ""))
 
     title = month_year_title(emp_row)
     name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
@@ -403,6 +425,8 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         info_parts.append(f"الوظيفة: {job}")
     if dept:
         info_parts.append(f"الإدارة: {dept}")
+    if sched:
+        info_parts.append(f"الجدول: {sched}")
     info_line = " | ".join(info_parts)
 
     def on_first_page(canvas, _doc):
@@ -439,6 +463,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
     story.append(Paragraph(ar("التأخير"), h_style))
     if late_emp is None or late_emp.empty:
         story.append(Paragraph(ar("لا يوجد تأخير"), p_style))
+        total_late = int(emp_row.get("total_late_minutes", 0) or 0)
     else:
         le = late_emp.copy().sort_values("date")
         le["date"] = le["date"].apply(fmt_date)
@@ -473,17 +498,9 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t)
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-        h, m = minutes_to_hours_minutes(total_late)
-        
-        story.append(
-            Paragraph(
-                ar(f"• إجمالي التأخير: {h} ساعة و {m} دقيقة"),
-                total_style
-            )
-        )
 
-
-
+    h, m = minutes_to_hours_minutes(total_late)
+    story.append(Paragraph(ar(f"• إجمالي التأخير: {h} ساعة و {m} دقيقة"), total_style))
     story.append(Spacer(1, 14))
 
     # الغياب
@@ -533,20 +550,25 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
 # =========================
 employees_df = load_employees_silent()
 
-# Sidebar Controls
 with st.sidebar:
     st.header("⚙️ الإعدادات")
     st.markdown("### 👤 المستخدم")
     st.success(f"✅ {st.session_state.get('login_user','')}")
 
     uploaded_file = st.file_uploader("📄 ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
+
+    st.markdown("---")
     start_time = st.time_input("🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
     grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
+
+    st.caption("ℹ️ يتم تحديد فترة الرواتب تلقائيًا من الملف (من 8 إلى 7) ويُحسب كراتب الشهر التالي.")
     st.caption("ℹ️ يتم استخراج التقرير تلقائيًا بمجرد رفع الملف.")
+
 
 if not uploaded_file:
     st.info("ارفع ملف البصمة من القائمة الجانبية لعرض التقرير.")
     st.stop()
+
 
 summary, late, absence = process_attendance(
     uploaded_file,
@@ -554,6 +576,7 @@ summary, late, absence = process_attendance(
     grace_minutes=int(grace),
     schedule_mode="by_nationality",
     employees_df=employees_df,
+    exceptions_df=None,
 )
 
 if summary is None or summary.empty:
@@ -567,15 +590,14 @@ if len(summary) != 1:
 
 emp = summary.iloc[0]
 
-emp_personnel_id = safe_str(emp.get("employee_id", ""))   # مفتاح البصمة
-emp_no = safe_str(emp.get("employee_no", ""))             # للعرض
+emp_personnel_id = safe_str(emp.get("employee_id", ""))
+emp_no = safe_str(emp.get("employee_no", ""))
 name_ar = safe_str(emp.get("name_ar", ""))
 name_en = safe_str(emp.get("name_en", ""))
-nat = safe_str(emp.get("nationality", ""))
+nat = safe_str(emp.get("nationality_raw", emp.get("nationality", "")))
 dept = safe_str(emp.get("department", ""))
 job = safe_str(emp.get("job_title", ""))
 
-# فلترة بيانات التأخير/الغياب
 late_emp = (
     late[late["employee_id"].astype(str).str.strip() == emp_personnel_id].copy()
     if late is not None and not late.empty
@@ -597,18 +619,20 @@ st.session_state["pdf_filename"] = f"{sanitize_filename(name_ar)}_{sanitize_file
 
 
 # =========================
-# عرض جميل
+# عرض
 # =========================
 st.title("📊 تقرير التأخير والغياب")
 
 title = month_year_title(emp)
 schedule = safe_str(emp.get("schedule", ""))
 
-sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
-fri_note = "🛑 إجازة الجمعة"
-st.caption(f"{fri_note} • {sat_note}")
+fri_work = bool(emp.get("fri_work", False))
+sat_work = bool(emp.get("sat_work", False))
 
-# KPIs
+fri_note = "✅ دوام الجمعة" if fri_work else "🛑 إجازة الجمعة"
+sat_note = "✅ دوام السبت" if sat_work else "🛑 إجازة السبت"
+st.caption(f"{fri_note} • {sat_note} • {schedule}")
+
 k1, k2, k3 = st.columns(3)
 total_late = int(emp.get("total_late_minutes", 0) or 0)
 h, m = minutes_to_hm(total_late)
@@ -633,7 +657,6 @@ k3.markdown(
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# بطاقة الموظف
 st.markdown(
     f"""
 <div class="card">
@@ -644,6 +667,14 @@ st.markdown(
   <div style="margin-top:10px;font-weight:800">الكود / الرقم الوظيفي: {emp_no}</div>
   <div class="muted" style="margin-top:2px">{job}</div>
   <div class="muted" style="margin-top:2px">🏢 {dept}</div>
+
+  <div class="muted" style="margin-top:10px">
+    فترة الرواتب (من الملف): {fmt_date(emp.get("period_from"))} → {fmt_date(emp.get("period_to"))}
+  </div>
+
+  <div class="muted" style="margin-top:6px">
+    الجدول: {schedule}
+  </div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -651,7 +682,6 @@ st.markdown(
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# قسمين
 right, left = st.columns(2, gap="large")
 
 with right:
@@ -704,7 +734,7 @@ with left:
 
 
 # =========================
-# PDF Download + Logout (في sidebar)
+# PDF Download + Logout
 # =========================
 with st.sidebar:
     st.divider()
@@ -723,10 +753,13 @@ with st.sidebar:
     else:
         st.info("ارفع ملف البصمة أولاً ليظهر زر تحميل PDF.")
 
-    st.image("assets/222003582.jpg", use_container_width=True)
+    if os.path.exists(SIDE_IMAGE_PATH):
+        st.image(SIDE_IMAGE_PATH, use_container_width=True)
+
     st.divider()
 
     if st.button("🚪 تسجيل خروج", use_container_width=True):
         st.session_state["logged_in"] = False
         st.session_state["login_user"] = ""
+        _clear_qp()
         st.rerun()
