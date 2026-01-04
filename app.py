@@ -2,13 +2,14 @@
 import os
 import re
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 import pandas as pd
 import streamlit as st
 
 from attendance_engine import process_attendance
 
-# PDF
+# PDF (ReportLab)
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.platypus.flowables import HRFlowable
@@ -22,68 +23,48 @@ from reportlab.lib.utils import ImageReader
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-
-def minutes_to_hours_minutes(total_minutes: int):
-    total_minutes = int(total_minutes or 0)
-    hours = total_minutes // 60
-    minutes = total_minutes % 60
-    return hours, minutes
-
-
-def minutes_to_hm(total_minutes):
-    total_minutes = int(total_minutes or 0)
-    h = total_minutes // 60
-    m = total_minutes % 60
-    return h, m
+from streamlit_cookies_manager import EncryptedCookieManager
 
 
 # =========================
-# إعدادات الصفحة
+# إعدادات الصفحة (لازم أول شيء)
 # =========================
 st.set_page_config(page_title="Attendance Report", layout="wide")
 
 
 # =========================
-# Session State Init
+# Cookies
+# =========================
+cookies = EncryptedCookieManager(
+    prefix="attendance_app",
+    password="super-secret-password-change-me"
+)
+if not cookies.ready():
+    st.stop()
+
+
+# =========================
+# Session State Init (مهم)
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
+
 if "login_user" not in st.session_state:
     st.session_state["login_user"] = ""
-
-
-# =========================
-# Query Params helpers (تثبيت الدخول مع Refresh)
-# =========================
-def _get_qp():
-    try:
-        return dict(st.query_params)
-    except Exception:
-        return st.experimental_get_query_params()
-
-
-def _set_qp(**kwargs):
-    try:
-        for k, v in kwargs.items():
-            st.query_params[k] = v
-    except Exception:
-        st.experimental_set_query_params(**kwargs)
-
-
-def _clear_qp():
-    try:
-        st.query_params.clear()
-    except Exception:
-        st.experimental_set_query_params()
 
 
 # =========================
 # Auth helpers
 # =========================
 def _get_users():
+    """
+    1) يحاول قراءة المستخدمين من secrets.toml
+    2) لو secrets غير موجود → fallback محلي حتى لا ينهار البرنامج
+    """
     try:
         return st.secrets.get("app_auth", {}).get("users", [])
     except Exception:
+        # fallback محلي (غير مناسب للإنتاج)
         return [{"username": "admin", "password": "1234"}]
 
 
@@ -95,25 +76,25 @@ def _check_user(username: str, password: str) -> bool:
     return False
 
 
-def require_login(app_name="التأخير والغياب"):
-    qp = _get_qp()
-    qp_auth = str(qp.get("auth", [""])[0] if isinstance(qp.get("auth"), list) else qp.get("auth", "")).strip()
-    qp_user = str(qp.get("u", [""])[0] if isinstance(qp.get("u"), list) else qp.get("u", "")).strip()
-
-    if (not st.session_state.get("logged_in", False)) and qp_auth == "1" and qp_user:
-        st.session_state["logged_in"] = True
-        st.session_state["login_user"] = qp_user
+def require_login(app_name=" التأخير والغياب"):
+    # تحميل الحالة من الكوكيز لو الجلسة غير مهيأة
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
 
     if not st.session_state.get("logged_in", False):
-        st.markdown(
-            """
+        st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
+
+    if not st.session_state.get("login_user", ""):
+        st.session_state["login_user"] = cookies.get("login_user", "")
+
+    # ===== شاشة تسجيل الدخول =====
+    if not st.session_state.get("logged_in", False):
+        st.markdown("""
         <style>
         section[data-testid="stSidebar"] { display: none !important; }
         .block-container{ max-width: 520px; padding-top: 80px; }
         </style>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
 
         st.markdown(f"## 🔐 {app_name}")
         st.caption("الرجاء تسجيل الدخول للمتابعة")
@@ -127,13 +108,18 @@ def require_login(app_name="التأخير والغياب"):
             if _check_user(username.strip(), password):
                 st.session_state["logged_in"] = True
                 st.session_state["login_user"] = username.strip()
-                _set_qp(auth="1", u=st.session_state["login_user"])
+
+                cookies["logged_in"] = "true"
+                cookies["login_user"] = username.strip()
+                cookies.save()
+
                 st.rerun()
             else:
                 st.error("❌ بيانات الدخول غير صحيحة")
 
         st.stop()
 
+    # ===== بعد الدخول =====
     st.markdown(
         f"""
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -146,19 +132,17 @@ def require_login(app_name="التأخير والغياب"):
 
 
 # =========================
-# Paths
+# مسارات
 # =========================
 EMP_PATH = os.path.join("data", "employees.xlsx")
-FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")
+FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")   # Arabic font (required)
 LOGO_PATH = os.path.join("assets", "logo.png")
 SIDE_IMAGE_PATH = os.path.join("assets", "222003582.jpg")
-
 
 # =========================
 # CSS
 # =========================
-st.markdown(
-    """
+st.markdown("""
 <style>
 section[data-testid="stSidebar"]{
   min-width: 380px !important;
@@ -300,10 +284,35 @@ section[data-testid="stSidebar"] {
 .warn { color: var(--warning); }
 .err { color: var(--danger); }
 .muted { color: var(--muted); }
+
+/* =========================
+   Export Buttons colors (sidebar)
+   - First download: Green
+   - Second download: Blue
+========================= */
+.export-box div[data-testid="stDownloadButton"]:nth-of-type(1) button {
+  background: #10B981 !important;
+  border: 1px solid #10B981 !important;
+  color: white !important;
+  font-weight: 800 !important;
+  border-radius: 12px !important;
+}
+.export-box div[data-testid="stDownloadButton"]:nth-of-type(1) button:hover {
+  filter: brightness(0.95);
+}
+
+.export-box div[data-testid="stDownloadButton"]:nth-of-type(2) button {
+  background: #2563EB !important;
+  border: 1px solid #2563EB !important;
+  color: white !important;
+  font-weight: 800 !important;
+  border-radius: 12px !important;
+}
+.export-box div[data-testid="stDownloadButton"]:nth-of-type(2) button:hover {
+  filter: brightness(0.95);
+}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 
 # =========================
@@ -313,7 +322,7 @@ require_login("تقرير التأخير والغياب")
 
 
 # =========================
-# Helpers
+# أدوات مساعدة
 # =========================
 def load_employees_silent():
     if os.path.exists(EMP_PATH):
@@ -333,6 +342,10 @@ def ar(text: str) -> str:
     return get_display(arabic_reshaper.reshape(s))
 
 
+def t(ar_text: str, en_text: str, lang: str) -> str:
+    return ar_text if lang == "ar" else en_text
+
+
 def safe_str(x):
     return "" if x is None or (isinstance(x, float) and pd.isna(x)) else str(x).strip()
 
@@ -345,18 +358,31 @@ def fmt_date(d):
 
 
 def month_year_title(emp_row):
-    # ✅ الآن يعتمد على payroll_month / payroll_year (الشهر التالي)
-    y = emp_row.get("payroll_year", "")
-    m = emp_row.get("payroll_month", "")
+    y, m = "", ""
+    p_to = emp_row.get("period_to", "")
     try:
-        y = int(y)
-        m = int(m)
+        dt_to = pd.to_datetime(p_to)
+        y = dt_to.year
+        m = dt_to.month
     except Exception:
-        y, m = "", ""
-
+        pass
     if y and m:
-        return f"تقرير الموظف عن راتب شهر {m:02d} - {y}"
+        return f"تقرير الموظف عن شهر {m:02d} - {y}"
     return "تقرير الموظف"
+
+
+def month_year_title_en(emp_row):
+    y, m = "", ""
+    p_to = emp_row.get("period_to", "")
+    try:
+        dt_to = pd.to_datetime(p_to)
+        y = dt_to.year
+        m = dt_to.month
+    except Exception:
+        pass
+    if y and m:
+        return f"Employee Monthly Report - {m:02d}/{y}"
+    return "Employee Report"
 
 
 def sanitize_filename(s: str) -> str:
@@ -365,7 +391,7 @@ def sanitize_filename(s: str) -> str:
     return s[:80] if s else "employee"
 
 
-WEEKDAY_AR_LOCAL = {
+WEEKDAY_AR = {
     "Saturday": "السبت",
     "Sunday": "الأحد",
     "Monday": "الإثنين",
@@ -378,22 +404,45 @@ WEEKDAY_AR_LOCAL = {
 
 def weekday_to_ar(x: str) -> str:
     s = safe_str(x)
-    return WEEKDAY_AR_LOCAL.get(s, s)
+    return WEEKDAY_AR.get(s, s)
 
 
-def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
+def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "ar") -> bytes:
+    """
+    ✅ Arabic must work even in English report:
+    - We register Arabic font always (AR)
+    - In EN report, we render Arabic parts using <font name="AR">...</font>
+    """
+    FONT_EN = "Helvetica"
+    FONT_AR_NAME = "AR"
+
+    # ✅ Register Arabic font always
     if not os.path.exists(FONT_PATH):
         raise FileNotFoundError(f"Arabic font not found: {FONT_PATH}")
-    pdfmetrics.registerFont(TTFont("AR", FONT_PATH))
+    try:
+        pdfmetrics.registerFont(TTFont(FONT_AR_NAME, FONT_PATH))
+    except Exception:
+        pass  # already registered
+
+    font_main = FONT_AR_NAME if lang == "ar" else FONT_EN
+
+    # ReportLab alignment: 0=LEFT, 1=CENTER, 2=RIGHT
+    align_text = 2 if lang == "ar" else 0
+    align_head = 2 if lang == "ar" else 0
+
+    # helper: in Arabic report reshape text, else return raw
+    def txt(x):
+        s = safe_str(x)
+        return ar(s) if lang == "ar" else s
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("title_ar", parent=styles["Title"], fontName="AR", fontSize=15, alignment=1)
-    name_style = ParagraphStyle("name_ar", parent=styles["BodyText"], fontName="AR", fontSize=12, alignment=1, leading=16)
-    info_style = ParagraphStyle("info_ar", parent=styles["BodyText"], fontName="AR", fontSize=10, alignment=1, textColor=colors.grey, leading=14)
+    title_style = ParagraphStyle("title", parent=styles["Title"], fontName=font_main, fontSize=15, alignment=1)
+    name_style = ParagraphStyle("name", parent=styles["BodyText"], fontName=font_main, fontSize=12, alignment=1, leading=16)
+    info_style = ParagraphStyle("info", parent=styles["BodyText"], fontName=font_main, fontSize=10, alignment=1, textColor=colors.grey, leading=14)
 
-    h_style = ParagraphStyle("h_ar", parent=styles["Heading3"], fontName="AR", fontSize=12, alignment=2, spaceAfter=6)
-    p_style = ParagraphStyle("p_ar", parent=styles["BodyText"], fontName="AR", fontSize=10.5, alignment=2, leading=15)
-    total_style = ParagraphStyle("total_ar", parent=p_style, fontName="AR", fontSize=13.5, alignment=2, leading=18)
+    h_style = ParagraphStyle("h", parent=styles["Heading3"], fontName=font_main, fontSize=12, alignment=align_head, spaceAfter=6)
+    p_style = ParagraphStyle("p", parent=styles["BodyText"], fontName=font_main, fontSize=10.5, alignment=align_text, leading=15)
+    total_style = ParagraphStyle("total", parent=p_style, fontName=font_main, fontSize=13.5, alignment=align_text, leading=18)
 
     buf = BytesIO()
     doc = SimpleDocTemplate(
@@ -407,26 +456,22 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
 
     name_ar_ = safe_str(emp_row.get("name_ar", ""))
     name_en_ = safe_str(emp_row.get("name_en", ""))
-    nat = safe_str(emp_row.get("nationality_raw", emp_row.get("nationality", "")))
+    nat = safe_str(emp_row.get("nationality", ""))
     emp_no = safe_str(emp_row.get("employee_no", ""))
     dept = safe_str(emp_row.get("department", ""))
     job = safe_str(emp_row.get("job_title", ""))
-    sched = safe_str(emp_row.get("schedule", ""))
 
-    title = month_year_title(emp_row)
-    name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
+    title = month_year_title(emp_row) if lang == "ar" else month_year_title_en(emp_row)
 
     info_parts = []
     if emp_no:
-        info_parts.append(f"الكود/الرقم: {emp_no}")
+        info_parts.append(t(f"الكود/الرقم: {emp_no}", f"Employee No: {emp_no}", lang))
     if nat:
-        info_parts.append(f"الجنسية: {nat}")
+        info_parts.append(t(f"الجنسية: {nat}", f"Nationality: {nat}", lang))
     if job:
-        info_parts.append(f"الوظيفة: {job}")
+        info_parts.append(t(f"الوظيفة: {job}", f"Job Title: {job}", lang))
     if dept:
-        info_parts.append(f"الإدارة: {dept}")
-    if sched:
-        info_parts.append(f"الجدول: {sched}")
+        info_parts.append(t(f"الإدارة: {dept}", f"Department: {dept}", lang))
     info_line = " | ".join(info_parts)
 
     def on_first_page(canvas, _doc):
@@ -446,90 +491,119 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
 
     def fmt_time(x):
         try:
-            t = pd.to_datetime(str(x), errors="coerce")
-            return "" if pd.isna(t) else t.strftime("%H:%M")
+            tt = pd.to_datetime(str(x), errors="coerce")
+            return "" if pd.isna(tt) else tt.strftime("%H:%M")
         except Exception:
             return ""
 
+    # ✅ Name paragraph (fix Arabic inside EN report)
+    if lang == "ar":
+        name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
+        name_paragraph = Paragraph(ar(name_line), name_style)
+    else:
+        en_part = escape(name_en_ or "")
+        ar_part = ar(name_ar_) if name_ar_ else ""
+        if en_part and ar_part:
+            mixed = f"{en_part} — <font name='AR'>{ar_part}</font>"
+        elif en_part:
+            mixed = en_part
+        else:
+            mixed = f"<font name='AR'>{ar_part}</font>"
+        name_paragraph = Paragraph(mixed, name_style)
+
     story = []
-    story.append(Paragraph(ar(title), title_style))
-    story.append(Paragraph(ar(name_line), name_style))
-    story.append(Paragraph(ar(info_line), info_style))
+    story.append(Paragraph(txt(title), title_style))
+    story.append(name_paragraph)
+    story.append(Paragraph(txt(info_line), info_style))
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.lightgrey))
     story.append(Spacer(1, 8))
 
-    # التأخير
-    story.append(Paragraph(ar("التأخير"), h_style))
+    # =========================
+    # Late
+    # =========================
+    story.append(Paragraph(txt(t("التأخير", "Late Attendance", lang)), h_style))
     if late_emp is None or late_emp.empty:
-        story.append(Paragraph(ar("لا يوجد تأخير"), p_style))
-        total_late = int(emp_row.get("total_late_minutes", 0) or 0)
+        story.append(Paragraph(txt(t("لا يوجد تأخير", "No late records", lang)), p_style))
     else:
-        le = late_emp.copy().sort_values("date")
-        le["date"] = le["date"].apply(fmt_date)
+        le = late_emp.copy().sort_values("date") if "date" in late_emp.columns else late_emp.copy()
+        if "date" in le.columns:
+            le["date"] = le["date"].apply(fmt_date)
 
-        rows = [[ar("اليوم"), ar("التاريخ"), ar("أول بصمة"), ar("الدقائق")]]
+        rows = [[
+            txt(t("اليوم", "Day", lang)),
+            txt(t("التاريخ", "Date", lang)),
+            txt(t("أول بصمة", "First Punch", lang)),
+            txt(t("الدقائق", "Minutes", lang)),
+        ]]
+
         for _, r in le.iterrows():
+            day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
             rows.append(
                 [
-                    ar(safe_str(r.get("weekday_ar", r.get("weekday", "")))),
-                    ar(safe_str(r.get("date", ""))),
-                    ar(fmt_time(r.get("first_punch_time", ""))),
-                    ar(str(int(r.get("late_minutes", 0) or 0))),
+                    txt(day_val),
+                    txt(safe_str(r.get("date", ""))),
+                    txt(fmt_time(r.get("first_punch_time", ""))),
+                    txt(str(int(r.get("late_minutes", 0) or 0))),
                 ]
             )
 
-        t = Table(rows, colWidths=[4.0 * cm, 5.0 * cm, 3.5 * cm, 3.0 * cm])
-        t.setStyle(
+        t1 = Table(rows, colWidths=[4.0 * cm, 5.0 * cm, 3.5 * cm, 3.0 * cm])
+        t1.setStyle(
             TableStyle(
                 [
-                    ("FONTNAME", (0, 0), (-1, -1), "AR"),
+                    ("FONTNAME", (0, 0), (-1, -1), font_main),
                     ("FONTSIZE", (0, 0), (-1, 0), 11),
                     ("FONTSIZE", (0, 1), (-1, -1), 10),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                    ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                    ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
-        story.append(t)
+        story.append(t1)
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
+        story.append(Paragraph(
+            txt(t(f"👤 إجمالي دقائق التأخير: {total_late}", f"👤 Total Late Minutes: {total_late}", lang)),
+            total_style
+        ))
 
-    h, m = minutes_to_hours_minutes(total_late)
-    story.append(Paragraph(ar(f"• إجمالي التأخير: {h} ساعة و {m} دقيقة"), total_style))
     story.append(Spacer(1, 14))
 
-    # الغياب
-    story.append(Paragraph(ar("الغياب"), h_style))
+    # =========================
+    # Absence
+    # =========================
+    story.append(Paragraph(txt(t("الغياب", "Absence", lang)), h_style))
     if abs_emp is None or abs_emp.empty:
-        story.append(Paragraph(ar("لا يوجد غياب"), p_style))
+        story.append(Paragraph(txt(t("لا يوجد غياب", "No absence records", lang)), p_style))
     else:
-        ae = abs_emp.copy().sort_values("date")
-        ae["date"] = ae["date"].apply(fmt_date)
+        ae = abs_emp.copy().sort_values("date") if "date" in abs_emp.columns else abs_emp.copy()
+        if "date" in ae.columns:
+            ae["date"] = ae["date"].apply(fmt_date)
 
-        rows2 = [[ar("اليوم"), ar("التاريخ")]]
+        rows2 = [[
+            txt(t("اليوم", "Day", lang)),
+            txt(t("التاريخ", "Date", lang)),
+        ]]
+
         for _, r in ae.iterrows():
-            rows2.append(
-                [
-                    ar(safe_str(r.get("weekday_ar", r.get("weekday", "")))),
-                    ar(safe_str(r.get("date", ""))),
-                ]
-            )
+            day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
+            rows2.append([txt(day_val), txt(safe_str(r.get("date", "")))])
 
         t2 = Table(rows2, colWidths=[6.0 * cm, 9.5 * cm])
         t2.setStyle(
             TableStyle(
                 [
-                    ("FONTNAME", (0, 0), (-1, -1), "AR"),
+                    ("FONTNAME", (0, 0), (-1, -1), font_main),
                     ("FONTSIZE", (0, 0), (-1, 0), 11),
                     ("FONTSIZE", (0, 1), (-1, -1), 10),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                    ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                    ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ("TOPPADDING", (0, 0), (-1, -1), 5),
@@ -539,7 +613,10 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
         story.append(t2)
         story.append(Spacer(1, 6))
         absent_days = int(emp_row.get("absent_days", 0) or 0)
-        story.append(Paragraph(ar(f"• عدد أيام الغياب: {absent_days}"), total_style))
+        story.append(Paragraph(
+            txt(t(f"🚫 عدد أيام الغياب: {absent_days}", f"🚫 Total Absent Days: {absent_days}", lang)),
+            total_style
+        ))
 
     doc.build(story, onFirstPage=on_first_page)
     return buf.getvalue()
@@ -550,25 +627,20 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame) -> bytes:
 # =========================
 employees_df = load_employees_silent()
 
+# Sidebar Controls
 with st.sidebar:
     st.header("⚙️ الإعدادات")
     st.markdown("### 👤 المستخدم")
     st.success(f"✅ {st.session_state.get('login_user','')}")
 
     uploaded_file = st.file_uploader("📄 ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
-
-    st.markdown("---")
     start_time = st.time_input("🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
     grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
-
-    st.caption("ℹ️ يتم تحديد فترة الرواتب تلقائيًا من الملف (من 8 إلى 7) ويُحسب كراتب الشهر التالي.")
     st.caption("ℹ️ يتم استخراج التقرير تلقائيًا بمجرد رفع الملف.")
-
 
 if not uploaded_file:
     st.info("ارفع ملف البصمة من القائمة الجانبية لعرض التقرير.")
     st.stop()
-
 
 summary, late, absence = process_attendance(
     uploaded_file,
@@ -576,7 +648,6 @@ summary, late, absence = process_attendance(
     grace_minutes=int(grace),
     schedule_mode="by_nationality",
     employees_df=employees_df,
-    exceptions_df=None,
 )
 
 if summary is None or summary.empty:
@@ -590,14 +661,15 @@ if len(summary) != 1:
 
 emp = summary.iloc[0]
 
-emp_personnel_id = safe_str(emp.get("employee_id", ""))
-emp_no = safe_str(emp.get("employee_no", ""))
+emp_personnel_id = safe_str(emp.get("employee_id", ""))   # مفتاح البصمة
+emp_no = safe_str(emp.get("employee_no", ""))             # للعرض
 name_ar = safe_str(emp.get("name_ar", ""))
 name_en = safe_str(emp.get("name_en", ""))
-nat = safe_str(emp.get("nationality_raw", emp.get("nationality", "")))
+nat = safe_str(emp.get("nationality", ""))
 dept = safe_str(emp.get("department", ""))
 job = safe_str(emp.get("job_title", ""))
 
+# فلترة بيانات التأخير/الغياب
 late_emp = (
     late[late["employee_id"].astype(str).str.strip() == emp_personnel_id].copy()
     if late is not None and not late.empty
@@ -614,36 +686,35 @@ if not late_emp.empty:
 if not abs_emp.empty:
     abs_emp["weekday_ar"] = abs_emp["weekday"].apply(weekday_to_ar) if "weekday" in abs_emp.columns else ""
 
-st.session_state["pdf_bytes"] = build_pdf(emp, late_emp, abs_emp)
-st.session_state["pdf_filename"] = f"{sanitize_filename(name_ar)}_{sanitize_filename(emp_no)}.pdf"
+# ✅ Build both PDFs (Arabic + English) + Two export buttons
+pdf_ar = build_pdf(emp, late_emp, abs_emp, lang="ar")
+pdf_en = build_pdf(emp, late_emp, abs_emp, lang="en")
+
+st.session_state["pdf_bytes_ar"] = pdf_ar
+st.session_state["pdf_bytes_en"] = pdf_en
+
+base_name = sanitize_filename(name_ar or name_en)
+base_no = sanitize_filename(emp_no)
+st.session_state["pdf_filename_ar"] = f"{base_name}_{base_no}_AR.pdf"
+st.session_state["pdf_filename_en"] = f"{base_name}_{base_no}_EN.pdf"
 
 
 # =========================
-# عرض
+# عرض جميل
 # =========================
-st.title("📊 تقرير التأخير والغياب")
+st.title("")
 
 title = month_year_title(emp)
 schedule = safe_str(emp.get("schedule", ""))
 
-fri_work = bool(emp.get("fri_work", False))
-sat_work = bool(emp.get("sat_work", False))
+sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
+fri_note = "🛑 إجازة الجمعة"
+st.caption(f"{fri_note} • {sat_note}")
 
-fri_note = "✅ دوام الجمعة" if fri_work else "🛑 إجازة الجمعة"
-sat_note = "✅ دوام السبت" if sat_work else "🛑 إجازة السبت"
-st.caption(f"{fri_note} • {sat_note} • {schedule}")
-
+# KPIs
 k1, k2, k3 = st.columns(3)
-total_late = int(emp.get("total_late_minutes", 0) or 0)
-h, m = minutes_to_hm(total_late)
-
 k1.markdown(
-    f'''
-    <div class="kpi">
-        <div class="v">{h}س  {m}د </div>
-        <div class="l">إجمالي التأخير</div>
-    </div>
-    ''',
+    f'<div class="kpi"><div class="v">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="l">إجمالي دقائق التأخير</div></div>',
     unsafe_allow_html=True
 )
 k2.markdown(
@@ -657,6 +728,7 @@ k3.markdown(
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# بطاقة الموظف
 st.markdown(
     f"""
 <div class="card">
@@ -667,14 +739,6 @@ st.markdown(
   <div style="margin-top:10px;font-weight:800">الكود / الرقم الوظيفي: {emp_no}</div>
   <div class="muted" style="margin-top:2px">{job}</div>
   <div class="muted" style="margin-top:2px">🏢 {dept}</div>
-
-  <div class="muted" style="margin-top:10px">
-    فترة الرواتب (من الملف): {fmt_date(emp.get("period_from"))} → {fmt_date(emp.get("period_to"))}
-  </div>
-
-  <div class="muted" style="margin-top:6px">
-    الجدول: {schedule}
-  </div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -682,6 +746,7 @@ st.markdown(
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# قسمين
 right, left = st.columns(2, gap="large")
 
 with right:
@@ -734,32 +799,51 @@ with left:
 
 
 # =========================
-# PDF Download + Logout
+# PDF Download + Logout (في sidebar)
 # =========================
 with st.sidebar:
     st.divider()
     st.subheader("⬇️ التصدير")
 
-    if st.session_state.get("pdf_bytes", b""):
+    # Wrapper for styling (green + blue)
+    st.markdown('<div class="export-box">', unsafe_allow_html=True)
+
+    if st.session_state.get("pdf_bytes_ar", b""):
         st.download_button(
-            "📄 تحميل تقرير PDF",
-            data=st.session_state["pdf_bytes"],
-            file_name=st.session_state.get("pdf_filename", "report.pdf"),
+            "📄 تحميل تقرير PDF (عربي)",
+            data=st.session_state["pdf_bytes_ar"],
+            file_name=st.session_state.get("pdf_filename_ar", "report_AR.pdf"),
             mime="application/pdf",
             use_container_width=True,
-            key="download_pdf_btn",
+            key="download_pdf_ar",
         )
-        st.caption(f"اسم الملف: {st.session_state.get('pdf_filename','report.pdf')}")
-    else:
-        st.info("ارفع ملف البصمة أولاً ليظهر زر تحميل PDF.")
+
+    if st.session_state.get("pdf_bytes_en", b""):
+        st.download_button(
+            "📄 Download PDF (English)",
+            data=st.session_state["pdf_bytes_en"],
+            file_name=st.session_state.get("pdf_filename_en", "report_EN.pdf"),
+            mime="application/pdf",
+            use_container_width=True,
+            key="download_pdf_en",
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if not st.session_state.get("pdf_bytes_ar", b"") and not st.session_state.get("pdf_bytes_en", b""):
+        st.info("ارفع ملف البصمة أولاً ليظهر التصدير.")
 
     if os.path.exists(SIDE_IMAGE_PATH):
         st.image(SIDE_IMAGE_PATH, use_container_width=True)
 
+        
     st.divider()
 
     if st.button("🚪 تسجيل خروج", use_container_width=True):
+        cookies["logged_in"] = "false"
+        cookies["login_user"] = ""
+        cookies.save()
+
         st.session_state["logged_in"] = False
         st.session_state["login_user"] = ""
-        _clear_qp()
         st.rerun()
