@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 import datetime as dt
 
@@ -46,14 +47,6 @@ def _read_attendance_any_format(file) -> pd.DataFrame:
     return df
 
 
-
-# ... (اترك دوال قراءة ملف البصمة كما هي عندك) ...
-
-import re
-import pandas as pd
-import re
-import pandas as pd
-
 def _is_saudi(nat) -> bool:
     # ✅ الافتراضي سعودي إذا لا توجد جنسية
     if nat is None or (isinstance(nat, float) and pd.isna(nat)):
@@ -83,7 +76,7 @@ def process_attendance(
     schedule_mode="by_nationality",  # by_nationality | auto | fri | fri_sat
     employees_df: pd.DataFrame | None = None,
 ):
-    # 1) قراءة البصمة (بنفس دالتك الذكية)
+    # 1) قراءة البصمة
     df = _read_attendance_any_format(attendance_file)
 
     # 2) rename لملف البصمة
@@ -110,57 +103,45 @@ def process_attendance(
     df["first_punch_time"] = fp.dt.time
 
     # 3) دمج بيانات الموظفين (إن وُجدت)
-    # نتوقع أعمدة مثل: employee_id / name / job_title / nationality / employee_no ...
     if employees_df is not None and not employees_df.empty:
         emp = employees_df.copy()
 
-        # توحيد أسماء أعمدة شائعة (عدل/زد حسب ملفك)
         emp = emp.rename(
             columns={
-                # المفتاح الرئيسي
                 "Personnel Number": "employee_id",
                 "Employee ID": "employee_id",
                 "Emp ID": "employee_id",
                 "ID": "employee_id",
 
-                # الاسم العربي / الإنجليزي
                 "Arabic name": "name_ar",
                 "Search name": "name_en",
                 "emp_name": "name_ar",
 
-                # الوظيفة
                 "Contrac Profession": "job_title",
 
-                # الجنسية
                 "nationality": "nationality",
                 "Nationality": "nationality",
                 "الجنسية": "nationality",
 
-
-                # الإدارة/القسم
                 "Section | Department": "department_emp",
 
-                # (اختياري) الرقم الوظيفي لو تحب عمود منفصل
-                # لو ما عندك عمود مستقل، سنجعله نفس Personnel Number لاحقًا
                 "Employee No": "employee_no",
                 "الرقم الوظيفي": "employee_no",
             }
         )
 
-        # ضروري: employee_id موجود
         if "employee_no" not in emp.columns:
             emp["employee_no"] = emp["employee_id"]
 
-        # اجعل employee_id نص لتفادي اختلاف الأنواع
         df["employee_id"] = df["employee_id"].astype(str).str.strip()
         emp["employee_id"] = emp["employee_id"].astype(str).str.strip()
 
-        df = df.merge(
-            emp[["employee_id"] + [c for c in ["name_ar","name_en","job_title","nationality","employee_no","department_emp"] if c in emp.columns]],
-            on="employee_id",
-            how="left",
-        )
+        keep_cols = ["employee_id"]
+        for c in ["name_ar", "name_en", "job_title", "nationality", "employee_no", "department_emp"]:
+            if c in emp.columns:
+                keep_cols.append(c)
 
+        df = df.merge(emp[keep_cols], on="employee_id", how="left")
 
     # 4) إعدادات الوقت
     hh, mm = start_time.split(":")
@@ -169,12 +150,17 @@ def process_attendance(
 
     results, late_details, absence_details = [], [], []
 
-    # مساعد لاختيار الاسم/الإدارة من ملف الموظفين إن وُجد
     def pick_first(series, fallback=""):
         if series is None:
             return fallback
         s = series.dropna()
         return s.iloc[0] if len(s) else fallback
+
+    # تحويل وقت البصمة لـ timedelta
+    def time_to_td(t):
+        if pd.isna(t):
+            return None
+        return dt.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
 
     for emp_id, emp_df in df.groupby("employee_id", dropna=False):
         emp_df = emp_df.copy()
@@ -186,33 +172,41 @@ def process_attendance(
         emp_nat  = pick_first(emp_df.get("nationality"), "")
         emp_no   = pick_first(emp_df.get("employee_no"), emp_id)
 
+        is_saudi = _is_saudi(emp_nat)
 
-        # 5) تحديد الدوام
-        if schedule_mode == "by_nationality":
-            schedule = "جمعة وسبت" if _is_saudi(emp_nat) else "جمعة فقط"
-        elif schedule_mode == "auto":
-            has_sat = (emp_df["weekday"] == "Saturday").any()
-            schedule = "جمعة فقط" if has_sat else "جمعة وسبت"
-        elif schedule_mode == "fri":
-            schedule = "جمعة فقط"
-        else:
-            schedule = "جمعة وسبت"
+        # =========================
+        # ✅ قاعدة السبت الجديدة
+        # - السعودي: السبت إجازة دائمًا
+        # - غير السعودي: السبت يُحسب (دوام/غياب) فقط إذا كان يحضر السبت فعليًا
+        # =========================
+        # هل لديه أي حضور يوم سبت (أي سجل يوم Saturday)؟
+        # (ممكن تشددها لو تحب: وجود first_punch_time)
+        has_sat_presence = (emp_df["weekday"] == "Saturday").any()
+
+        # هل السبت يوم عمل لهذا الموظف؟
+        saturday_is_workday = (not is_saudi) and has_sat_presence
+
+        # جدول/وصف للعرض في التقارير
+        # "جمعة فقط" = السبت دوام
+        # "جمعة وسبت" = السبت إجازة
+        schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
 
         def is_workday(day_name: str) -> bool:
-            if schedule == "جمعة فقط":
-                return day_name != "Friday"
-            return day_name not in ("Friday", "Saturday")
-
-        # تحويل وقت البصمة لـ timedelta
-        def time_to_td(t):
-            if pd.isna(t):
-                return None
-            return dt.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+            # الجمعة إجازة للجميع
+            if day_name == "Friday":
+                return False
+            # السبت حسب القاعدة أعلاه
+            if day_name == "Saturday":
+                return saturday_is_workday
+            # باقي الأيام دوام
+            return True
 
         emp_df["is_workday"] = emp_df["weekday"].apply(is_workday)
         emp_df["first_td"] = emp_df["first_punch_time"].apply(time_to_td)
 
-        # ✅ شرطك السابق: لا نحسب تأخير يوم السبت حتى لو حضر
+        # =========================
+        # ✅ التأخير: استثناء السبت للجميع (0 دائمًا يوم السبت)
+        # =========================
         def calc_late(row):
             if row["weekday"] == "Saturday":
                 return 0
@@ -272,15 +266,14 @@ def process_attendance(
                     "department": emp_dept,
                     "date": r["date"].date() if pd.notna(r["date"]) else None,
                     "weekday": r["weekday"],
-                    "weekday_ar": weekday_ar(r["weekday"]), 
+                    "weekday_ar": weekday_ar(r["weekday"]),
                     "late_minutes": int(r["late_minutes"]),
                     "schedule": schedule,
-                    "first_punch": r.get("first_punch"),  # لو العمود الأصلي موجود
-                    "first_punch_time": r.get("first_punch_time"),  # الوقت كـ time
+                    "first_punch": r.get("first_punch"),
+                    "first_punch_time": r.get("first_punch_time"),
                 }
             )
 
-        # ✅ لازم يكون خارج الحلقة (مرة واحدة لكل موظف)
         results.append(
             {
                 "employee_id": emp_id,
@@ -288,7 +281,7 @@ def process_attendance(
                 "name_ar": name_ar,
                 "name_en": name_en,
                 "job_title": emp_job,
-                "is_saudi": _is_saudi(emp_nat),
+                "is_saudi": is_saudi,
                 "nationality_raw": emp_nat,
                 "department": emp_dept,
                 "schedule": schedule,
@@ -299,6 +292,5 @@ def process_attendance(
                 "total_late_minutes": int(emp_df["late_minutes"].sum()),
             }
         )
-
 
     return pd.DataFrame(results), pd.DataFrame(late_details), pd.DataFrame(absence_details)
