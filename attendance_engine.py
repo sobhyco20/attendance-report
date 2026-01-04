@@ -221,8 +221,20 @@ def process_attendance(
         emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
 
         # الغياب = أيام عمل متوقعة - أيام لديها أي سجل
-        date_min = emp_df["date"].min()
-        date_max = emp_df["date"].max()
+        # ✅ قاعدة ثابتة: من 8 إلى 7
+        any_date = emp_df["date"].dropna().iloc[0]
+
+        start_date = any_date.replace(day=8)
+
+        # لو اليوم أقل من 8 → نرجع شهر
+        if any_date.day < 8:
+            start_date = (start_date - pd.DateOffset(months=1))
+
+        end_date = start_date + pd.DateOffset(months=1) - pd.DateOffset(days=1)
+
+        date_min = start_date
+        date_max = end_date
+
         if pd.isna(date_min) or pd.isna(date_max):
             continue
 
