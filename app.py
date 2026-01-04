@@ -468,8 +468,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
         info_parts.append(t(f"الكود/الرقم: {emp_no}", f"Employee No: {emp_no}", lang))
     if nat:
         info_parts.append(t(f"الجنسية: {nat}", f"Nationality: {nat}", lang))
-    if job:
-        info_parts.append(t(f"الوظيفة: {job}", f"Job Title: {job}", lang))
     if dept:
         info_parts.append(t(f"الإدارة: {dept}", f"Department: {dept}", lang))
     info_line = " | ".join(info_parts)
