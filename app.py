@@ -407,7 +407,7 @@ def weekday_to_ar(x: str) -> str:
     return WEEKDAY_AR.get(s, s)
 
 
-def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "ar") -> bytes:
+def build_(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "ar") -> bytes:
     """
     ✅ Arabic must work even in English report:
     - We register Arabic font always (AR)
@@ -565,10 +565,17 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
         story.append(t1)
         story.append(Spacer(1, 6))
         total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-        story.append(Paragraph(
-            txt(t(f"👤 إجمالي دقائق التأخير: {total_late}", f"👤 Total Late Minutes: {total_late}", lang)),
-            total_style
-        ))
+        
+        hours = total_late // 60
+        mins  = total_late % 60
+        
+        if lang == "ar":
+            total_txt = f"⏱ إجمالي التأخير: {hours} ساعة و {mins} دقيقة  (={total_late} دقيقة)"
+            story.append(Paragraph(ar(total_txt), total_style))
+        else:
+            total_txt = f"⏱ Total Late: {hours}h {mins}m  (={total_late} min)"
+            story.append(Paragraph(total_txt, total_style))
+
 
     story.append(Spacer(1, 14))
 
@@ -684,8 +691,8 @@ if not late_emp.empty:
 if not abs_emp.empty:
     abs_emp["weekday_ar"] = abs_emp["weekday"].apply(weekday_to_ar) if "weekday" in abs_emp.columns else ""
 
-# ✅ Build both PDFs (Arabic + English) + Two export buttons
-pdf_ar = build_pdf(emp, late_emp, abs_emp, lang="ar")
+# ✅ Build both s (Arabic + English) + Two export buttons
+_ar = build_pdf(emp, late_emp, abs_emp, lang="ar")
 pdf_en = build_pdf(emp, late_emp, abs_emp, lang="en")
 
 st.session_state["pdf_bytes_ar"] = pdf_ar
