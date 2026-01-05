@@ -420,7 +420,7 @@ def build_(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "
     if not os.path.exists(FONT_PATH):
         raise FileNotFoundError(f"Arabic font not found: {FONT_PATH}")
     try:
-        pdfmetrics.registerFont(TTFont(FONT_AR_NAME, FONT_PATH))
+        metrics.registerFont(TTFont(FONT_AR_NAME, FONT_PATH))
     except Exception:
         pass  # already registered
 
