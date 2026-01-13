@@ -87,7 +87,6 @@ def _detect_attendance_rule(emp_row: pd.Series) -> str:
                 v_l = v.strip().lower()
                 if v_l in ["daily_hours", "daily hours", "hours", "exempt", "استثناء", "مستثنى"]:
                     return "daily_hours"
-                # لو مكتوب صراحة daily_hours
                 if "daily" in v_l and "hour" in v_l:
                     return "daily_hours"
     return ""
@@ -99,7 +98,7 @@ def process_attendance(
     grace_minutes=15,
     schedule_mode="by_nationality",
     employees_df: pd.DataFrame | None = None,
-    daily_required_hours: float = 9.0,   # ✅ ساعات المستثنين
+    daily_required_hours: float = 9.0,   # ✅ موجودة بدون كسر البنية (لم تعد مستخدمة للمستثنين حسب طلبك)
 ):
     # 1) قراءة البصمة
     df = _read_attendance_any_format(attendance_file)
@@ -162,7 +161,6 @@ def process_attendance(
 
         # ✅ احتساب المستثنى (قاعدة daily_hours) لو موجودة بأي عمود معروف
         if "attendance_calculation" not in emp.columns:
-            # نحاول ننسخ من أعمدة ممكنة
             for c in ["Attendance Calculation", "Attendance Rule", "rule", "Rule", "نوع الاحتساب", "طريقة الاحتساب", "مستثنى"]:
                 if c in emp.columns:
                     emp["attendance_calculation"] = emp[c]
@@ -186,6 +184,9 @@ def process_attendance(
     start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
     late_limit = start_td + dt.timedelta(minutes=int(grace_minutes))
 
+    # ✅ قاعدة الإضافي للمستثنى: بعد 5 مساءً
+    overtime_threshold = dt.timedelta(hours=17, minutes=0)
+
     results, late_details, absence_details, exempt_details = [], [], [], []
 
     def pick_first(series, fallback=""):
@@ -198,11 +199,6 @@ def process_attendance(
         if pd.isna(t) or t is None:
             return None
         return dt.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
-
-    def dt_to_minutes(x):
-        if pd.isna(x) or x is None:
-            return None
-        return x.hour * 60 + x.minute
 
     for emp_id, emp_df in df.groupby("employee_id", dropna=False):
         emp_df = emp_df.copy()
@@ -284,6 +280,7 @@ def process_attendance(
         # ✅ التأخير/الإضافي
         # =========================
         emp_df["first_td"] = emp_df["first_punch_time"].apply(time_to_td)
+        emp_df["last_td"] = emp_df["last_punch_time"].apply(time_to_td)
 
         # ---- حالة الموظف العادي: نفس منطقك
         if attendance_rule != "daily_hours":
@@ -349,10 +346,8 @@ def process_attendance(
                 }
             )
 
-        # ---- حالة المستثنى: daily_hours (9 ساعات)
+        # ---- حالة المستثنى: daily_hours (حسب طلبك: late بعد بداية الدوام، overtime بعد 5 مساءً)
         else:
-            required_minutes = int(float(daily_required_hours) * 60)
-
             # نجمع باليوم (قد توجد سجلات مكررة)
             # نأخذ أول دخول = min first_punch_dt ، آخر خروج = max last_punch_dt
             day_group = emp_df.dropna(subset=["date"]).copy()
@@ -369,48 +364,64 @@ def process_attendance(
                 )
             )
 
-            # حساب دقائق العمل والعجز/الإضافي
+            # تحويل أول/آخر بصمة إلى time و td
+            agg["first_punch_time"] = agg["first_in_dt"].dt.time
+            agg["last_punch_time"] = agg["last_out_dt"].dt.time
+            agg["first_td"] = agg["first_punch_time"].apply(time_to_td)
+            agg["last_td"] = agg["last_punch_time"].apply(time_to_td)
+
+            # ✅ worked_minutes (للعرض فقط)
             worked_minutes_list = []
-            deficit_list = []
+            late_list = []
             overtime_list = []
 
-            for i, row in agg.iterrows():
+            for _, row in agg.iterrows():
                 if not bool(row["is_workday"]):
                     worked_minutes = 0
-                    deficit = 0
-                    overtime = 0
+                    late_m = 0
+                    overtime_m = 0
                 else:
                     fi = row["first_in_dt"]
                     lo = row["last_out_dt"]
 
+                    # worked
                     if pd.isna(fi) or pd.isna(lo):
                         worked_minutes = 0
-                        deficit = 0
-                        overtime = 0
                     else:
                         delta = lo - fi
                         worked_minutes = max(0, int(delta.total_seconds() // 60))
-                        deficit = max(0, required_minutes - worked_minutes)
-                        overtime = max(0, worked_minutes - required_minutes)
+
+                    # ✅ late: بعد بداية الدوام + السماح
+                    if row["first_td"] is None:
+                        late_m = 0
+                    elif row["first_td"] <= late_limit:
+                        late_m = 0
+                    else:
+                        late_m = int((row["first_td"] - late_limit).total_seconds() // 60)
+
+                    # ✅ overtime: كل الوقت بعد 5 مساءً
+                    if row["last_td"] is None:
+                        overtime_m = 0
+                    elif row["last_td"] <= overtime_threshold:
+                        overtime_m = 0
+                    else:
+                        overtime_m = int((row["last_td"] - overtime_threshold).total_seconds() // 60)
 
                 worked_minutes_list.append(worked_minutes)
-                deficit_list.append(deficit)
-                overtime_list.append(overtime)
+                late_list.append(late_m)
+                overtime_list.append(overtime_m)
 
             agg["worked_minutes"] = worked_minutes_list
-            agg["late_minutes"] = deficit_list               # ✅ نفس اسم late_minutes لكن بمعنى العجز
+            agg["late_minutes"] = late_list
             agg["overtime_minutes"] = overtime_list
 
-            agg["first_punch_time"] = agg["first_in_dt"].dt.time
-            agg["last_punch_time"] = agg["last_out_dt"].dt.time
             agg["date"] = pd.to_datetime(agg["date_only"])
 
-            # ✅ المطلوب: نعرض فقط الأيام التي بها (عجز >0 أو إضافي >0)
+            # ✅ نعرض فقط الأيام التي بها (تأخير صباحي أو تعويض بعد 5)
             interesting = agg[(agg["late_minutes"] > 0) | (agg["overtime_minutes"] > 0)].copy()
             interesting = interesting.sort_values("date")
 
-            # ✅ نُرجعها كـ late_details (لتُستخدم في PDF وشاشة التأخير/الإضافي)
-            total_deficit = int(agg["late_minutes"].sum())
+            total_late = int(agg["late_minutes"].sum())
             total_overtime = int(agg["overtime_minutes"].sum())
 
             for _, r in interesting.iterrows():
@@ -426,8 +437,8 @@ def process_attendance(
                         "date": r["date"].date() if pd.notna(r["date"]) else None,
                         "weekday": r["weekday"],
                         "weekday_ar": r["weekday_ar"],
-                        "late_minutes": int(r["late_minutes"]),               # deficit
-                        "overtime_minutes": int(r["overtime_minutes"]),
+                        "late_minutes": int(r["late_minutes"]),         # ✅ تأخير بعد بداية الدوام
+                        "overtime_minutes": int(r["overtime_minutes"]), # ✅ بعد 5 مساءً
                         "worked_minutes": int(r["worked_minutes"]),
                         "schedule": schedule,
                         "first_punch_time": r.get("first_punch_time"),
@@ -447,7 +458,7 @@ def process_attendance(
                         "first_in": r.get("first_punch_time"),
                         "last_out": r.get("last_punch_time"),
                         "worked_minutes": int(r["worked_minutes"]),
-                        "deficit_minutes": int(r["late_minutes"]),
+                        "late_minutes": int(r["late_minutes"]),
                         "overtime_minutes": int(r["overtime_minutes"]),
                     }
                 )
@@ -466,9 +477,14 @@ def process_attendance(
                     "period_from": date_min.date(),
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
+
+                    # ✅ late_days هنا = أيام التأخير الصباحي فقط
                     "late_days": int((agg["late_minutes"] > 0).sum()),
-                    "total_late_minutes": total_deficit,
+                    "total_late_minutes": total_late,
+
                     "attendance_calculation": "daily_hours",
+
+                    # ✅ إجمالي العمل بعد 5 مساءً
                     "total_overtime_minutes": total_overtime,
                 }
             )
