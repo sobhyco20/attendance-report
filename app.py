@@ -122,7 +122,7 @@ def require_login(app_name=" التأخير والغياب"):
 
 
 # =========================
-# مسارات
+# Paths
 # =========================
 EMP_PATH = os.path.join("data", "employees.xlsx")
 FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")
@@ -318,7 +318,6 @@ section[data-testid="stSidebar"] {
   min-width: 200px;
 }
 .net-pill span{ display:block; font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 2px; }
-
 </style>
 """,
     unsafe_allow_html=True,
@@ -427,6 +426,13 @@ def mm_to_hhmm(m: int) -> str:
     return f"{sign}{m//60:02d}:{m%60:02d}"
 
 
+def mm_to_ar_hm(m: int) -> str:
+    m = int(m or 0)
+    h = abs(m) // 60
+    mm = abs(m) % 60
+    return f"{h} ساعة و {mm} دقيقة"
+
+
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "ar") -> bytes:
     FONT_EN = "Helvetica"
     FONT_AR_NAME = "AR"
@@ -499,6 +505,9 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     title = month_year_title(emp_row) if lang == "ar" else month_year_title_en(emp_row)
     attendance_rule = safe_str(emp_row.get("attendance_calculation", "")).strip().lower()
 
+    # =========================
+    # Info line
+    # =========================
     if lang == "ar":
         info_parts = []
         if emp_no:
@@ -550,6 +559,9 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     def rtl_cols(widths):
         return list(reversed(widths)) if lang == "ar" else widths
 
+    # =========================
+    # Header
+    # =========================
     if lang == "ar":
         name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
         name_paragraph = Paragraph(ar(name_line), name_style)
@@ -570,19 +582,20 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     story.append(Paragraph(info_line, info_style))
     story.append(Spacer(1, 6))
 
+    # ✅ ملاحظة للمستثنى (حسب القاعدة الجديدة)
     if attendance_rule == "daily_hours":
         if lang == "ar":
-            note = "📝 ملاحظة: تم احتساب التأخير والإضافي بناءً على إجمالي ساعات العمل اليومية (9 ساعات) من أول بصمة دخول إلى آخر بصمة خروج."
+            note = "📝 ملاحظة: المستثنى يتم احتساب التأخير بعد بداية الدوام (مع السماح)، والإضافي كل ما بعد الساعة 5:00 مساءً."
             story.append(Paragraph(ar(note), note_style))
         else:
-            note = "📝 Note: This employee is calculated by daily work hours (9 hours) from first punch-in to last punch-out."
+            note = "📝 Note: Exempt employees: late is after shift start (with grace), overtime is after 5:00 PM."
             story.append(Paragraph(note, note_style))
 
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.lightgrey))
     story.append(Spacer(1, 8))
 
     # =========================
-    # Late / Daily Hours
+    # Late / Exempt
     # =========================
     late_title = "التأخير والإضافي" if (attendance_rule == "daily_hours" and lang == "ar") else t("التأخير", "Late Attendance", lang)
     story.append(Paragraph(txt(late_title), h_style))
@@ -596,7 +609,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
             le["date"] = le["date"].apply(fmt_date)
 
         if attendance_rule == "daily_hours":
-            # جدول المستثنين (First/Last + Worked + Deficit + Overtime)
+            # ✅ جدول المستثنين
             if "worked_minutes" not in le.columns:
                 le["worked_minutes"] = 0
             if "overtime_minutes" not in le.columns:
@@ -608,8 +621,8 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                 txt(t("أول بصمة", "First In", lang)),
                 txt(t("آخر بصمة", "Last Out", lang)),
                 txt(t("ساعات العمل", "Worked", lang)),
-                txt(t("تأخير", "Deficit", lang)),
-                txt(t("الإضافي", "Overtime", lang)),
+                txt(t("التأخير", "Late", lang)),
+                txt(t("التعويض/الإضافي", "Overtime", lang)),
             ])]
 
             for _, r in le.iterrows():
@@ -618,8 +631,8 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                 last_out = fmt_time(r.get("last_punch_time", ""))
 
                 worked = mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))
-                deficit = mm_to_hhmm(int(r.get("late_minutes", 0) or 0))
-                overtime = mm_to_hhmm(int(r.get("overtime_minutes", 0) or 0))
+                late_m = int(r.get("late_minutes", 0) or 0)
+                ot_m = int(r.get("overtime_minutes", 0) or 0)
 
                 row = [
                     txt(day_val),
@@ -627,12 +640,12 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                     txt(first_in),
                     txt(last_out),
                     txt(worked),
-                    txt(deficit),
-                    txt(overtime),
+                    txt(mm_to_hhmm(late_m)),
+                    txt(mm_to_hhmm(ot_m)),
                 ]
                 rows.append(rtl_row(row))
 
-            widths = rtl_cols([2.6*cm, 3.2*cm, 2.6*cm, 2.6*cm, 3.0*cm, 2.6*cm, 2.6*cm])
+            widths = rtl_cols([2.6*cm, 3.2*cm, 2.6*cm, 2.6*cm, 3.0*cm, 2.6*cm, 3.2*cm])
             t1 = Table(rows, colWidths=widths)
             t1.setStyle(TableStyle([
                 ("FONTNAME", (0, 0), (-1, -1), font_main),
@@ -648,54 +661,47 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
             story.append(t1)
             story.append(Spacer(1, 8))
 
-            # ✅ إجماليات: التأخير + التعويض في نفس السطر + الصافي بسطر منفصل
-            total_deficit = int(emp_row.get("total_late_minutes", 0) or 0)
+            # ✅ إجماليات بالشكل المطلوب (سطر واحد + سطر صافي)
+            total_late = int(emp_row.get("total_late_minutes", 0) or 0)
             total_overtime = int(emp_row.get("total_overtime_minutes", 0) or 0)
 
-            # fallback لو summary لا يحتوي total_overtime_minutes
+            # fallback
             if total_overtime == 0 and "overtime_minutes" in le.columns:
                 total_overtime = int(le["overtime_minutes"].sum())
 
-            net_minutes = total_overtime - total_deficit
-
-            def to_hm(m: int):
-                m = int(m or 0)
-                h = abs(m) // 60
-                mm = abs(m) % 60
-                return h, mm
-
-            d_h, d_m = to_hm(total_deficit)
-            o_h, o_m = to_hm(total_overtime)
-            n_h, n_m = to_hm(net_minutes)
+            net_minutes = total_overtime - total_late
 
             if lang == "ar":
-                # سطر واحد: التأخير - التعويض
-                line1 = f"⏱ إجمالي التأخير: {d_h} ساعة و {d_m} دقيقة  -  إجمالي التعويض/الإضافي: {o_h} ساعة و {o_m} دقيقة"
+                line1 = f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}  -  ⬆️ إجمالي التعويض/الإضافي: {mm_to_ar_hm(total_overtime)}"
                 story.append(Paragraph(ar(line1), total_style))
 
-                # سطر منفصل: الصافي
                 if net_minutes > 0:
-                    line2 = f"✅ الصافي: إضافي {n_h} ساعة و {n_m} دقيقة"
+                    line2 = f"✅ الصافي: إضافي {mm_to_ar_hm(net_minutes)}"
                 elif net_minutes < 0:
-                    line2 = f"❌ الصافي: تأخير {n_h} ساعة و {n_m} دقيقة"
+                    line2 = f"❌ الصافي: تأخير {mm_to_ar_hm(net_minutes)}"
                 else:
                     line2 = "➖ الصافي: متعادل (0 دقيقة)"
                 story.append(Paragraph(ar(line2), total_style))
-
             else:
-                line1 = f"⏱ Total Deficit: {d_h}h {d_m}m  -  Total Overtime: {o_h}h {o_m}m"
+                def hhmm(m):
+                    m = int(m or 0)
+                    h = abs(m) // 60
+                    mm = abs(m) % 60
+                    return f"{h}h {mm}m"
+
+                line1 = f"Total Late: {hhmm(total_late)}  -  Total Overtime: {hhmm(total_overtime)}"
                 story.append(Paragraph(line1, total_style))
 
                 if net_minutes > 0:
-                    line2 = f"✅ Net: Overtime {n_h}h {n_m}m"
+                    line2 = f"Net: Overtime {hhmm(net_minutes)}"
                 elif net_minutes < 0:
-                    line2 = f"❌ Net: Deficit {n_h}h {n_m}m"
+                    line2 = f"Net: Deficit {hhmm(net_minutes)}"
                 else:
-                    line2 = "➖ Net: Balanced (0m)"
+                    line2 = "Net: Balanced (0m)"
                 story.append(Paragraph(line2, total_style))
 
         else:
-            # جدول الموظف العادي RTL بالعربي
+            # ✅ جدول الموظف العادي RTL بالعربي
             rows = [rtl_row([
                 txt(t("اليوم", "Day", lang)),
                 txt(t("التاريخ", "Date", lang)),
@@ -730,7 +736,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
 
             total_late = int(emp_row.get("total_late_minutes", 0) or 0)
             if lang == "ar":
-                story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_hhmm(total_late)}"), total_style))
+                story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"), total_style))
             else:
                 story.append(Paragraph(f"⏱ Total Late: {mm_to_hhmm(total_late)}", total_style))
 
@@ -828,7 +834,9 @@ job = safe_str(emp.get("job_title", ""))
 
 late_emp = late[late["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if late is not None and not late.empty else pd.DataFrame()
 abs_emp = absence[absence["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if absence is not None and not absence.empty else pd.DataFrame()
-exempt_emp = exempt_report[exempt_report["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if exempt_report is not None and not exempt_report.empty else pd.DataFrame()
+
+# ✅ هذا يستخدم جدول المستثنى النهائي (نفس late_details لكن نعرض فقط interesting)
+exempt_emp = late_emp.copy() if not late_emp.empty else pd.DataFrame()
 
 if not late_emp.empty and "weekday" in late_emp.columns:
     late_emp["weekday_ar"] = late_emp["weekday"].apply(weekday_to_ar)
@@ -846,6 +854,7 @@ base_no = sanitize_filename(emp_no)
 st.session_state["pdf_filename_ar"] = f"{base_name}_{base_no}_AR.pdf"
 st.session_state["pdf_filename_en"] = f"{base_name}_{base_no}_EN.pdf"
 
+
 # =========================
 # عرض الشاشة
 # =========================
@@ -856,6 +865,8 @@ schedule = safe_str(emp.get("schedule", ""))
 sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
 fri_note = "🛑 إجازة الجمعة"
 st.caption(f"{fri_note} • {sat_note}")
+
+# ✅ بطاقة الموظف في البداية
 st.markdown(
     f"""
 <div class="card">
@@ -871,6 +882,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# KPIs
 k1, k2, k3 = st.columns(3)
 k1.markdown(
     f'<div class="kpi"><div class="v">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="l">إجمالي دقائق التأخير</div></div>',
@@ -887,10 +899,11 @@ k3.markdown(
 
 attendance_rule = safe_str(emp.get("attendance_calculation", "")).strip().lower()
 
+# ✅ صندوق الصافي للمستثنى بالقواعد الجديدة
 if attendance_rule == "daily_hours":
-    total_deficit = int(emp.get("total_late_minutes", 0) or 0)
+    total_late = int(emp.get("total_late_minutes", 0) or 0)
     total_overtime = int(emp.get("total_overtime_minutes", 0) or 0)
-    net = total_overtime - total_deficit
+    net = total_overtime - total_late
 
     if net > 0:
         net_label = "صافي إضافي"
@@ -905,18 +918,18 @@ if attendance_rule == "daily_hours":
     st.markdown(
         f"""
         <div class="net-box">
-          <div class="net-title">🧾 نتيجة الاحتساب (مستثنى: 9 ساعات يوميًا)</div>
+          <div class="net-title">🧾 نتيجة الاحتساب (مستثنى: الإضافي بعد 5 مساءً)</div>
           <div class="net-big {net_class}">{net_label}: {mm_to_hhmm(net)}</div>
-          <div class="net-sub">الصافي = إجمالي الإضافي − إجمالي التأخير</div>
+          <div class="net-sub">الصافي = إجمالي التعويض/الإضافي بعد 5 − إجمالي التأخير بعد بداية الدوام</div>
 
           <div class="net-row">
             <div class="net-pill">
-              ⬇️ إجمالي التأخير: <b>{mm_to_hhmm(total_deficit)}</b>
-              <span>(أيام أقل من 9 ساعات)</span>
+              ⬇️ إجمالي التأخير: <b>{mm_to_hhmm(total_late)}</b>
+              <span>(بعد بداية الدوام + السماح)</span>
             </div>
             <div class="net-pill">
               ⬆️ إجمالي التعويض/الإضافي: <b>{mm_to_hhmm(total_overtime)}</b>
-              <span>(أيام أكثر من 9 ساعات)</span>
+              <span>(كل ما بعد 5:00 مساءً)</span>
             </div>
           </div>
         </div>
@@ -926,13 +939,10 @@ if attendance_rule == "daily_hours":
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-
-st.markdown("<br>", unsafe_allow_html=True)
-
 right, left = st.columns(2, gap="large")
 
 # =========================
-# ✅ شاشة المستثنين: عرض فقط الأيام التي بها عجز أو إضافي
+# ✅ شاشة المستثنين: أيام بها late أو overtime فقط، مع أول/آخر بصمة
 # =========================
 with right:
     title_box = "⏱ التأخير / التعويض (مستثنى)" if attendance_rule == "daily_hours" else "⏱ التأخير"
@@ -940,19 +950,20 @@ with right:
 
     if attendance_rule == "daily_hours":
         if exempt_emp is None or exempt_emp.empty:
-            st.success("لا يوجد عجز أو تعويض ✅")
+            st.success("لا يوجد تأخير أو تعويض ✅")
         else:
-            # ترتيب حسب التاريخ
-            exempt_emp = exempt_emp.copy()
-            exempt_emp["date"] = pd.to_datetime(exempt_emp["date"], errors="coerce")
-            exempt_emp = exempt_emp.sort_values("date")
+            x = exempt_emp.copy()
+            # نتأكد من الأعمدة
+            if "date" in x.columns:
+                x["date"] = pd.to_datetime(x["date"], errors="coerce")
+                x = x.sort_values("date")
 
-            # عرض كعناصر جميلة
-            for _, r in exempt_emp.iterrows():
-                day = safe_str(r.get("weekday_ar", ""))
+            for _, r in x.iterrows():
+                day = safe_str(r.get("weekday_ar", r.get("weekday", "")))
                 d = fmt_date(r.get("date"))
-                fi = safe_str(r.get("first_in", ""))
-                lo = safe_str(r.get("last_out", ""))
+
+                fi = r.get("first_punch_time", "")
+                lo = r.get("last_punch_time", "")
 
                 try:
                     fi_str = pd.to_datetime(str(fi), errors="coerce").strftime("%H:%M") if str(fi) not in ["", "NaT"] else ""
@@ -964,15 +975,14 @@ with right:
                     lo_str = ""
 
                 worked = mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))
-                deficit = int(r.get("deficit_minutes", 0) or 0)
-                overtime = int(r.get("overtime_minutes", 0) or 0)
+                late_m = int(r.get("late_minutes", 0) or 0)
+                ot_m = int(r.get("overtime_minutes", 0) or 0)
 
-                # نص الحالة
                 parts = []
-                if deficit > 0:
-                    parts.append(f"<b class='err'>عجز/تأخير: {mm_to_hhmm(deficit)}</b>")
-                if overtime > 0:
-                    parts.append(f"<b class='ok'>تعويض/إضافي: {mm_to_hhmm(overtime)}</b>")
+                if late_m > 0:
+                    parts.append(f"<b class='err'>تأخير: {mm_to_hhmm(late_m)}</b>")
+                if ot_m > 0:
+                    parts.append(f"<b class='ok'>تعويض/إضافي: {mm_to_hhmm(ot_m)}</b>")
                 status_html = " • ".join(parts) if parts else "<b class='muted'>—</b>"
 
                 st.markdown(
@@ -1020,6 +1030,9 @@ with right:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+# =========================
+# Absence
+# =========================
 with left:
     st.markdown('<div class="card"><div class="card-title">🚫 الغياب</div>', unsafe_allow_html=True)
 
