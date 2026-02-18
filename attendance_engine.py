@@ -1,3 +1,6 @@
+# =========================
+# attendance_engine.py
+# =========================
 import re
 import pandas as pd
 import datetime as dt
@@ -92,6 +95,15 @@ def _detect_attendance_rule(emp_row: pd.Series) -> str:
     return ""
 
 
+# ✅ رمضان: من 18-02-2026 إلى 17-03-2026
+RAMADAN_FROM = pd.Timestamp("2026-02-18")
+RAMADAN_TO   = pd.Timestamp("2026-03-17")
+
+# ✅ دوام رمضان
+RAMADAN_START_TIME = "09:30"
+RAMADAN_END_TIME   = "15:30"
+
+
 def process_attendance(
     attendance_file,
     start_time="08:00",
@@ -179,13 +191,37 @@ def process_attendance(
 
         df = df.merge(emp[keep_cols], on="employee_id", how="left")
 
-    # 4) إعدادات الوقت
+    # 4) إعدادات الوقت (افتراضي من المدخلات)
     hh, mm = start_time.split(":")
-    start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
-    late_limit = start_td + dt.timedelta(minutes=int(grace_minutes))
+    default_start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
+    default_late_limit = default_start_td + dt.timedelta(minutes=int(grace_minutes))
 
-    # ✅ قاعدة الإضافي للمستثنى: بعد 5 مساءً
-    overtime_threshold = dt.timedelta(hours=17, minutes=0)
+    # ✅ إعدادات وقت رمضان
+    rh, rm = RAMADAN_START_TIME.split(":")
+    ram_start_td = dt.timedelta(hours=int(rh), minutes=int(rm))
+    ram_late_limit = ram_start_td + dt.timedelta(minutes=int(grace_minutes))
+
+    eh, em = RAMADAN_END_TIME.split(":")
+    ram_overtime_threshold = dt.timedelta(hours=int(eh), minutes=int(em))
+
+    # ✅ قاعدة الإضافي للمستثنى خارج رمضان: بعد 5 مساءً
+    default_overtime_threshold = dt.timedelta(hours=17, minutes=0)
+
+    def _is_ramadan_date(d) -> bool:
+        if pd.isna(d) or d is None:
+            return False
+        dd = pd.to_datetime(d).normalize()
+        return (dd >= RAMADAN_FROM) and (dd <= RAMADAN_TO)
+
+    def shift_params_for_date(d):
+        """
+        يرجع (late_limit, overtime_threshold) حسب التاريخ
+        late_limit: وقت بداية الدوام + السماح
+        overtime_threshold: وقت نهاية الدوام (للمستثنى)
+        """
+        if _is_ramadan_date(d):
+            return ram_late_limit, ram_overtime_threshold
+        return default_late_limit, default_overtime_threshold
 
     results, late_details, absence_details, exempt_details = [], [], [], []
 
@@ -196,9 +232,18 @@ def process_attendance(
         return s.iloc[0] if len(s) else fallback
 
     def time_to_td(t):
-        if pd.isna(t) or t is None:
+        # ✅ يمسك None و NaN و NaT
+        if t is None or pd.isna(t):
             return None
-        return dt.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+        try:
+            return dt.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+        except Exception:
+            # ✅ لو جاء وقت كنص/قيمة غريبة
+            tt = pd.to_datetime(t, errors="coerce")
+            if pd.isna(tt):
+                return None
+            return dt.timedelta(hours=tt.hour, minutes=tt.minute, seconds=tt.second)
+
 
     for emp_id, emp_df in df.groupby("employee_id", dropna=False):
         emp_df = emp_df.copy()
@@ -282,7 +327,7 @@ def process_attendance(
         emp_df["first_td"] = emp_df["first_punch_time"].apply(time_to_td)
         emp_df["last_td"] = emp_df["last_punch_time"].apply(time_to_td)
 
-        # ---- حالة الموظف العادي: نفس منطقك
+        # ---- حالة الموظف العادي
         if attendance_rule != "daily_hours":
 
             def calc_late(row):
@@ -292,9 +337,11 @@ def process_attendance(
                     return 0
                 if row["first_td"] is None:
                     return 0
-                if row["first_td"] <= late_limit:
+
+                late_limit_day, _ = shift_params_for_date(row.get("date"))
+                if row["first_td"] <= late_limit_day:
                     return 0
-                return int((row["first_td"] - late_limit).total_seconds() // 60)
+                return int((row["first_td"] - late_limit_day).total_seconds() // 60)
 
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
 
@@ -346,7 +393,7 @@ def process_attendance(
                 }
             )
 
-        # ---- حالة المستثنى: daily_hours (حسب طلبك: late بعد بداية الدوام، overtime بعد 5 مساءً)
+        # ---- حالة المستثنى: daily_hours
         else:
             # نجمع باليوم (قد توجد سجلات مكررة)
             # نأخذ أول دخول = min first_punch_dt ، آخر خروج = max last_punch_dt
@@ -391,21 +438,24 @@ def process_attendance(
                         delta = lo - fi
                         worked_minutes = max(0, int(delta.total_seconds() // 60))
 
+                    # ✅ معايير اليوم (رمضان/غيره)
+                    late_limit_day, overtime_thr_day = shift_params_for_date(row.get("date_only"))
+
                     # ✅ late: بعد بداية الدوام + السماح
                     if row["first_td"] is None:
                         late_m = 0
-                    elif row["first_td"] <= late_limit:
+                    elif row["first_td"] <= late_limit_day:
                         late_m = 0
                     else:
-                        late_m = int((row["first_td"] - late_limit).total_seconds() // 60)
+                        late_m = int((row["first_td"] - late_limit_day).total_seconds() // 60)
 
-                    # ✅ overtime: كل الوقت بعد 5 مساءً
+                    # ✅ overtime: كل الوقت بعد نهاية الدوام
                     if row["last_td"] is None:
                         overtime_m = 0
-                    elif row["last_td"] <= overtime_threshold:
+                    elif row["last_td"] <= overtime_thr_day:
                         overtime_m = 0
                     else:
-                        overtime_m = int((row["last_td"] - overtime_threshold).total_seconds() // 60)
+                        overtime_m = int((row["last_td"] - overtime_thr_day).total_seconds() // 60)
 
                 worked_minutes_list.append(worked_minutes)
                 late_list.append(late_m)
@@ -417,7 +467,7 @@ def process_attendance(
 
             agg["date"] = pd.to_datetime(agg["date_only"])
 
-            # ✅ نعرض فقط الأيام التي بها (تأخير صباحي أو تعويض بعد 5)
+            # ✅ نعرض فقط الأيام التي بها (تأخير صباحي أو تعويض بعد نهاية الدوام)
             interesting = agg[(agg["late_minutes"] > 0) | (agg["overtime_minutes"] > 0)].copy()
             interesting = interesting.sort_values("date")
 
@@ -437,8 +487,8 @@ def process_attendance(
                         "date": r["date"].date() if pd.notna(r["date"]) else None,
                         "weekday": r["weekday"],
                         "weekday_ar": r["weekday_ar"],
-                        "late_minutes": int(r["late_minutes"]),         # ✅ تأخير بعد بداية الدوام
-                        "overtime_minutes": int(r["overtime_minutes"]), # ✅ بعد 5 مساءً
+                        "late_minutes": int(r["late_minutes"]),
+                        "overtime_minutes": int(r["overtime_minutes"]),
                         "worked_minutes": int(r["worked_minutes"]),
                         "schedule": schedule,
                         "first_punch_time": r.get("first_punch_time"),
@@ -478,13 +528,11 @@ def process_attendance(
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
 
-                    # ✅ late_days هنا = أيام التأخير الصباحي فقط
                     "late_days": int((agg["late_minutes"] > 0).sum()),
                     "total_late_minutes": total_late,
 
                     "attendance_calculation": "daily_hours",
 
-                    # ✅ إجمالي العمل بعد 5 مساءً
                     "total_overtime_minutes": total_overtime,
                 }
             )
