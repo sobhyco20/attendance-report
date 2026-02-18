@@ -1,3 +1,6 @@
+# =========================
+# app.py (Streamlit)
+# =========================
 import os
 import re
 from io import BytesIO
@@ -582,13 +585,13 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     story.append(Paragraph(info_line, info_style))
     story.append(Spacer(1, 6))
 
-    # ✅ ملاحظة للمستثنى (حسب القاعدة الجديدة)
+    # ✅ ملاحظة للمستثنى
     if attendance_rule == "daily_hours":
         if lang == "ar":
-            note = "📝 ملاحظة: المستثنى يتم احتساب التأخير بعد بداية الدوام (مع السماح)، والإضافي كل ما بعد الساعة 5:00 مساءً."
+            note = "📝 ملاحظة: المستثنى يتم احتساب التأخير بعد بداية الدوام (مع السماح). والإضافي بعد نهاية الدوام (في رمضان 15:30، وخارج رمضان 17:00)."
             story.append(Paragraph(ar(note), note_style))
         else:
-            note = "📝 Note: Exempt employees: late is after shift start (with grace), overtime is after 5:00 PM."
+            note = "📝 Note: Exempt employees: late is after shift start (with grace). Overtime is after shift end (Ramadan 15:30, otherwise 17:00)."
             story.append(Paragraph(note, note_style))
 
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.lightgrey))
@@ -661,11 +664,10 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
             story.append(t1)
             story.append(Spacer(1, 8))
 
-            # ✅ إجماليات بالشكل المطلوب (سطر واحد + سطر صافي)
+            # ✅ إجماليات بالشكل المطلوب
             total_late = int(emp_row.get("total_late_minutes", 0) or 0)
             total_overtime = int(emp_row.get("total_overtime_minutes", 0) or 0)
 
-            # fallback
             if total_overtime == 0 and "overtime_minutes" in le.columns:
                 total_overtime = int(le["overtime_minutes"].sum())
 
@@ -701,7 +703,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                 story.append(Paragraph(line2, total_style))
 
         else:
-            # ✅ جدول الموظف العادي RTL بالعربي
             rows = [rtl_row([
                 txt(t("اليوم", "Day", lang)),
                 txt(t("التاريخ", "Date", lang)),
@@ -743,7 +744,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     story.append(Spacer(1, 12))
 
     # =========================
-    # Absence (RTL بالعربي)
+    # Absence
     # =========================
     story.append(Paragraph(txt(t("الغياب", "Absence", lang)), h_style))
     if abs_emp is None or abs_emp.empty:
@@ -799,6 +800,7 @@ with st.sidebar:
     start_time = st.time_input("🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
     grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
     st.caption("ℹ️ يتم استخراج التقرير تلقائيًا بمجرد رفع الملف.")
+    st.info("🕋 خلال رمضان (18-02-2026 → 17-03-2026) يتم تطبيق الدوام تلقائيًا: 09:30 إلى 15:30 بغض النظر عن وقت البداية المختار.")
 
 if not uploaded_file:
     st.info("ارفع ملف البصمة من القائمة الجانبية لعرض التقرير.")
@@ -899,7 +901,7 @@ k3.markdown(
 
 attendance_rule = safe_str(emp.get("attendance_calculation", "")).strip().lower()
 
-# ✅ صندوق الصافي للمستثنى بالقواعد الجديدة
+# ✅ صندوق الصافي للمستثنى
 if attendance_rule == "daily_hours":
     total_late = int(emp.get("total_late_minutes", 0) or 0)
     total_overtime = int(emp.get("total_overtime_minutes", 0) or 0)
@@ -918,9 +920,9 @@ if attendance_rule == "daily_hours":
     st.markdown(
         f"""
         <div class="net-box">
-          <div class="net-title">🧾 نتيجة الاحتساب (مستثنى: الإضافي بعد 5 مساءً)</div>
+          <div class="net-title">🧾 نتيجة الاحتساب (مستثنى: الإضافي بعد نهاية الدوام)</div>
           <div class="net-big {net_class}">{net_label}: {mm_to_hhmm(net)}</div>
-          <div class="net-sub">الصافي = إجمالي التعويض/الإضافي بعد 5 − إجمالي التأخير بعد بداية الدوام</div>
+          <div class="net-sub">الصافي = إجمالي التعويض/الإضافي بعد نهاية الدوام − إجمالي التأخير بعد بداية الدوام</div>
 
           <div class="net-row">
             <div class="net-pill">
@@ -929,7 +931,7 @@ if attendance_rule == "daily_hours":
             </div>
             <div class="net-pill">
               ⬆️ إجمالي التعويض/الإضافي: <b>{mm_to_hhmm(total_overtime)}</b>
-              <span>(كل ما بعد 5:00 مساءً)</span>
+              <span>(بعد نهاية الدوام — رمضان 15:30 / غيره 17:00)</span>
             </div>
           </div>
         </div>
@@ -953,7 +955,6 @@ with right:
             st.success("لا يوجد تأخير أو تعويض ✅")
         else:
             x = exempt_emp.copy()
-            # نتأكد من الأعمدة
             if "date" in x.columns:
                 x["date"] = pd.to_datetime(x["date"], errors="coerce")
                 x = x.sort_values("date")
