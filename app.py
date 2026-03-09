@@ -29,7 +29,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 
 # =========================
-# إعدادات الصفحة (لازم أول شيء)
+# إعدادات الصفحة
 # =========================
 st.set_page_config(page_title="Attendance Report", layout="wide")
 
@@ -43,7 +43,7 @@ if not cookies.ready():
 
 
 # =========================
-# Session State Init (مهم)
+# Session State Init
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -69,7 +69,7 @@ def _check_user(username: str, password: str) -> bool:
     return False
 
 
-def require_login(app_name=" التأخير والغياب"):
+def require_login(app_name=" التأخير والغياب والخروج المبكر"):
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = (cookies.get("logged_in", "") == "true")
 
@@ -160,6 +160,7 @@ section[data-testid="stSidebar"] > div{
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #EF4444;
+  --info: #2563EB;
 
   --badge: #EEF2FF;
   --shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
@@ -179,6 +180,7 @@ section[data-testid="stSidebar"] > div{
     --success: #34D399;
     --warning: #FBBF24;
     --danger: #FB7185;
+    --info: #60A5FA;
 
     --badge: #1E293B;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
@@ -187,7 +189,7 @@ section[data-testid="stSidebar"] > div{
 
 * { transition: background-color 0.3s ease, border-color 0.3s ease; }
 
-.block-container { max-width: 1080px; padding-top: 2rem; }
+.block-container { max-width: 1180px; padding-top: 2rem; }
 
 html, body, [class*="css"] {
   direction: rtl;
@@ -278,9 +280,9 @@ section[data-testid="stSidebar"] {
 .ok { color: var(--success); }
 .warn { color: var(--warning); }
 .err { color: var(--danger); }
+.infox { color: var(--info); }
 .muted { color: var(--muted); }
 
-/* Export Buttons */
 .export-box div[data-testid="stDownloadButton"]:nth-of-type(1) button {
   background: #10B981 !important;
   border: 1px solid #10B981 !important;
@@ -296,7 +298,6 @@ section[data-testid="stSidebar"] {
   border-radius: 12px !important;
 }
 
-/* Net Box */
 .net-box{
   border: 2px solid var(--border);
   background: linear-gradient(90deg, rgba(79,70,229,0.10), rgba(79,70,229,0.02));
@@ -318,7 +319,7 @@ section[data-testid="stSidebar"] {
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 900;
-  min-width: 200px;
+  min-width: 220px;
 }
 .net-pill span{ display:block; font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 2px; }
 </style>
@@ -330,7 +331,7 @@ section[data-testid="stSidebar"] {
 # =========================
 # Login
 # =========================
-require_login("تقرير التأخير والغياب")
+require_login("تقرير التأخير والغياب والخروج المبكر")
 
 
 # =========================
@@ -431,9 +432,11 @@ def mm_to_hhmm(m: int) -> str:
 
 def mm_to_ar_hm(m: int) -> str:
     m = int(m or 0)
-    h = abs(m) // 60
-    mm = abs(m) % 60
-    return f"{h} ساعة و {mm} دقيقة"
+    sign = "-" if m < 0 else ""
+    m = abs(m)
+    h = m // 60
+    mm = m % 60
+    return f"{sign}{h} ساعة و {mm} دقيقة"
 
 
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str = "ar") -> bytes:
@@ -486,7 +489,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
 
     h_style = ParagraphStyle("h", parent=styles["Heading3"], fontName=font_main, fontSize=12, alignment=align_head, spaceAfter=6)
     p_style = ParagraphStyle("p", parent=styles["BodyText"], fontName=font_main, fontSize=10.5, alignment=align_text, leading=15)
-    total_style = ParagraphStyle("total", parent=p_style, fontName=font_main, fontSize=13.0, alignment=align_text, leading=18)
+    total_style = ParagraphStyle("total", parent=p_style, fontName=font_main, fontSize=12.0, alignment=align_text, leading=18)
 
     buf = BytesIO()
     doc = SimpleDocTemplate(
@@ -508,9 +511,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     title = month_year_title(emp_row) if lang == "ar" else month_year_title_en(emp_row)
     attendance_rule = safe_str(emp_row.get("attendance_calculation", "")).strip().lower()
 
-    # =========================
-    # Info line
-    # =========================
     if lang == "ar":
         info_parts = []
         if emp_no:
@@ -562,9 +562,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     def rtl_cols(widths):
         return list(reversed(widths)) if lang == "ar" else widths
 
-    # =========================
-    # Header
-    # =========================
     if lang == "ar":
         name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
         name_paragraph = Paragraph(ar(name_line), name_style)
@@ -585,23 +582,26 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
     story.append(Paragraph(info_line, info_style))
     story.append(Spacer(1, 6))
 
-    # ✅ ملاحظة للمستثنى
     if attendance_rule == "daily_hours":
         if lang == "ar":
-            note = "📝 ملاحظة: المستثنى يتم احتساب التأخير بعد بداية الدوام (مع السماح). والإضافي بعد نهاية الدوام (في رمضان 15:30، وخارج رمضان 17:00)."
+            note = "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام، والإضافي بعد نهاية الدوام."
             story.append(Paragraph(ar(note), note_style))
         else:
-            note = "📝 Note: Exempt employees: late is after shift start (with grace). Overtime is after shift end (Ramadan 15:30, otherwise 17:00)."
+            note = "📝 Note: Late is calculated after shift start with grace, early leave before shift end, and overtime after shift end."
+            story.append(Paragraph(note, note_style))
+    else:
+        if lang == "ar":
+            note = "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام المحددة."
+            story.append(Paragraph(ar(note), note_style))
+        else:
+            note = "📝 Note: Late is calculated after shift start with grace, and early leave before official shift end."
             story.append(Paragraph(note, note_style))
 
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.lightgrey))
     story.append(Spacer(1, 8))
 
-    # =========================
-    # Late / Exempt
-    # =========================
-    late_title = "التأخير والإضافي" if (attendance_rule == "daily_hours" and lang == "ar") else t("التأخير", "Late Attendance", lang)
-    story.append(Paragraph(txt(late_title), h_style))
+    section_title = "التأخير والخروج المبكر والإضافي" if lang == "ar" else "Late / Early Leave / Overtime"
+    story.append(Paragraph(txt(section_title), h_style))
 
     if late_emp is None or late_emp.empty:
         story.append(Paragraph(txt(t("لا يوجد بيانات", "No records", lang)), p_style))
@@ -611,13 +611,14 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
             le = le.sort_values("date")
             le["date"] = le["date"].apply(fmt_date)
 
-        if attendance_rule == "daily_hours":
-            # ✅ جدول المستثنين
-            if "worked_minutes" not in le.columns:
-                le["worked_minutes"] = 0
-            if "overtime_minutes" not in le.columns:
-                le["overtime_minutes"] = 0
+        if "worked_minutes" not in le.columns:
+            le["worked_minutes"] = 0
+        if "overtime_minutes" not in le.columns:
+            le["overtime_minutes"] = 0
+        if "early_leave_minutes" not in le.columns:
+            le["early_leave_minutes"] = 0
 
+        if attendance_rule == "daily_hours":
             rows = [rtl_row([
                 txt(t("اليوم", "Day", lang)),
                 txt(t("التاريخ", "Date", lang)),
@@ -625,89 +626,8 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                 txt(t("آخر بصمة", "Last Out", lang)),
                 txt(t("ساعات العمل", "Worked", lang)),
                 txt(t("التأخير", "Late", lang)),
-                txt(t("التعويض/الإضافي", "Overtime", lang)),
-            ])]
-
-            for _, r in le.iterrows():
-                day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
-                first_in = fmt_time(r.get("first_punch_time", ""))
-                last_out = fmt_time(r.get("last_punch_time", ""))
-
-                worked = mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))
-                late_m = int(r.get("late_minutes", 0) or 0)
-                ot_m = int(r.get("overtime_minutes", 0) or 0)
-
-                row = [
-                    txt(day_val),
-                    txt(safe_str(r.get("date", ""))),
-                    txt(first_in),
-                    txt(last_out),
-                    txt(worked),
-                    txt(mm_to_hhmm(late_m)),
-                    txt(mm_to_hhmm(ot_m)),
-                ]
-                rows.append(rtl_row(row))
-
-            widths = rtl_cols([2.6*cm, 3.2*cm, 2.6*cm, 2.6*cm, 3.0*cm, 2.6*cm, 3.2*cm])
-            t1 = Table(rows, colWidths=widths)
-            t1.setStyle(TableStyle([
-                ("FONTNAME", (0, 0), (-1, -1), font_main),
-                ("FONTSIZE", (0, 0), (-1, 0), 10.5),
-                ("FONTSIZE", (0, 1), (-1, -1), 9.5),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ]))
-            story.append(t1)
-            story.append(Spacer(1, 8))
-
-            # ✅ إجماليات بالشكل المطلوب
-            total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-            total_overtime = int(emp_row.get("total_overtime_minutes", 0) or 0)
-
-            if total_overtime == 0 and "overtime_minutes" in le.columns:
-                total_overtime = int(le["overtime_minutes"].sum())
-
-            net_minutes = total_overtime - total_late
-
-            if lang == "ar":
-                line1 = f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}  -  ⬆️ إجمالي التعويض/الإضافي: {mm_to_ar_hm(total_overtime)}"
-                story.append(Paragraph(ar(line1), total_style))
-
-                if net_minutes > 0:
-                    line2 = f"✅ الصافي: إضافي {mm_to_ar_hm(net_minutes)}"
-                elif net_minutes < 0:
-                    line2 = f"❌ الصافي: تأخير {mm_to_ar_hm(net_minutes)}"
-                else:
-                    line2 = "➖ الصافي: متعادل (0 دقيقة)"
-                story.append(Paragraph(ar(line2), total_style))
-            else:
-                def hhmm(m):
-                    m = int(m or 0)
-                    h = abs(m) // 60
-                    mm = abs(m) % 60
-                    return f"{h}h {mm}m"
-
-                line1 = f"Total Late: {hhmm(total_late)}  -  Total Overtime: {hhmm(total_overtime)}"
-                story.append(Paragraph(line1, total_style))
-
-                if net_minutes > 0:
-                    line2 = f"Net: Overtime {hhmm(net_minutes)}"
-                elif net_minutes < 0:
-                    line2 = f"Net: Deficit {hhmm(net_minutes)}"
-                else:
-                    line2 = "Net: Balanced (0m)"
-                story.append(Paragraph(line2, total_style))
-
-        else:
-            rows = [rtl_row([
-                txt(t("اليوم", "Day", lang)),
-                txt(t("التاريخ", "Date", lang)),
-                txt(t("أول بصمة", "First Punch", lang)),
-                txt(t("الدقائق", "Minutes", lang)),
+                txt(t("الخروج المبكر", "Early Leave", lang)),
+                txt(t("الإضافي", "Overtime", lang)),
             ])]
 
             for _, r in le.iterrows():
@@ -716,36 +636,94 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, lang: str 
                     txt(day_val),
                     txt(safe_str(r.get("date", ""))),
                     txt(fmt_time(r.get("first_punch_time", ""))),
-                    txt(str(int(r.get("late_minutes", 0) or 0))),
+                    txt(fmt_time(r.get("last_punch_time", ""))),
+                    txt(mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))),
+                    txt(mm_to_hhmm(int(r.get("late_minutes", 0) or 0))),
+                    txt(mm_to_hhmm(int(r.get("early_leave_minutes", 0) or 0))),
+                    txt(mm_to_hhmm(int(r.get("overtime_minutes", 0) or 0))),
                 ]
                 rows.append(rtl_row(row))
 
-            t1 = Table(rows, colWidths=rtl_cols([4.0 * cm, 5.0 * cm, 3.5 * cm, 3.0 * cm]))
-            t1.setStyle(TableStyle([
-                ("FONTNAME", (0, 0), (-1, -1), font_main),
-                ("FONTSIZE", (0, 0), (-1, 0), 11),
-                ("FONTSIZE", (0, 1), (-1, -1), 10),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ]))
-            story.append(t1)
-            story.append(Spacer(1, 6))
+            widths = rtl_cols([2.2*cm, 2.7*cm, 2.2*cm, 2.2*cm, 2.6*cm, 2.2*cm, 2.6*cm, 2.2*cm])
+            t1 = Table(rows, colWidths=widths)
+        else:
+            rows = [rtl_row([
+                txt(t("اليوم", "Day", lang)),
+                txt(t("التاريخ", "Date", lang)),
+                txt(t("أول بصمة", "First Punch", lang)),
+                txt(t("آخر بصمة", "Last Punch", lang)),
+                txt(t("التأخير", "Late", lang)),
+                txt(t("الخروج المبكر", "Early Leave", lang)),
+            ])]
 
-            total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-            if lang == "ar":
-                story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"), total_style))
+            for _, r in le.iterrows():
+                day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
+                row = [
+                    txt(day_val),
+                    txt(safe_str(r.get("date", ""))),
+                    txt(fmt_time(r.get("first_punch_time", ""))),
+                    txt(fmt_time(r.get("last_punch_time", ""))),
+                    txt(mm_to_hhmm(int(r.get("late_minutes", 0) or 0))),
+                    txt(mm_to_hhmm(int(r.get("early_leave_minutes", 0) or 0))),
+                ]
+                rows.append(rtl_row(row))
+
+            widths = rtl_cols([3.0*cm, 3.2*cm, 2.8*cm, 2.8*cm, 2.8*cm, 3.0*cm])
+            t1 = Table(rows, colWidths=widths)
+
+        t1.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), font_main),
+            ("FONTSIZE", (0, 0), (-1, 0), 10.0),
+            ("FONTSIZE", (0, 1), (-1, -1), 9.2),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(t1)
+        story.append(Spacer(1, 8))
+
+        total_late = int(emp_row.get("total_late_minutes", 0) or 0)
+        total_early_leave = int(emp_row.get("total_early_leave_minutes", 0) or 0)
+        total_overtime = int(emp_row.get("total_overtime_minutes", 0) or 0)
+        total_deduction = total_late + total_early_leave
+
+        if lang == "ar":
+            story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"), total_style))
+            story.append(Paragraph(ar(f"🚪 إجمالي الخروج المبكر: {mm_to_ar_hm(total_early_leave)}"), total_style))
+
+            if attendance_rule == "daily_hours":
+                story.append(Paragraph(ar(f"⬆️ إجمالي الإضافي: {mm_to_ar_hm(total_overtime)}"), total_style))
+                net_minutes = total_overtime - total_deduction
+                if net_minutes > 0:
+                    net_line = f"✅ الصافي النهائي: إضافي {mm_to_ar_hm(net_minutes)}"
+                elif net_minutes < 0:
+                    net_line = f"❌ الصافي النهائي: عجز {mm_to_ar_hm(net_minutes)}"
+                else:
+                    net_line = "➖ الصافي النهائي: متعادل (0 دقيقة)"
+                story.append(Paragraph(ar(net_line), total_style))
             else:
-                story.append(Paragraph(f"⏱ Total Late: {mm_to_hhmm(total_late)}", total_style))
+                story.append(Paragraph(ar(f"📌 إجمالي التأخير + الخروج المبكر: {mm_to_ar_hm(total_deduction)}"), total_style))
+        else:
+            story.append(Paragraph(f"Total Late: {mm_to_hhmm(total_late)}", total_style))
+            story.append(Paragraph(f"Total Early Leave: {mm_to_hhmm(total_early_leave)}", total_style))
+            if attendance_rule == "daily_hours":
+                story.append(Paragraph(f"Total Overtime: {mm_to_hhmm(total_overtime)}", total_style))
+                net_minutes = total_overtime - total_deduction
+                if net_minutes > 0:
+                    net_line = f"Final Net: Overtime {mm_to_hhmm(net_minutes)}"
+                elif net_minutes < 0:
+                    net_line = f"Final Net: Deficit {mm_to_hhmm(net_minutes)}"
+                else:
+                    net_line = "Final Net: Balanced (0m)"
+                story.append(Paragraph(net_line, total_style))
+            else:
+                story.append(Paragraph(f"Total Late + Early Leave: {mm_to_hhmm(total_deduction)}", total_style))
 
     story.append(Spacer(1, 12))
 
-    # =========================
-    # Absence
-    # =========================
     story.append(Paragraph(txt(t("الغياب", "Absence", lang)), h_style))
     if abs_emp is None or abs_emp.empty:
         story.append(Paragraph(txt(t("لا يوجد غياب", "No absence records", lang)), p_style))
@@ -800,7 +778,8 @@ with st.sidebar:
     start_time = st.time_input("🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
     grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
     st.caption("ℹ️ يتم استخراج التقرير تلقائيًا بمجرد رفع الملف.")
-    st.info("🕋 خلال رمضان (18-02-2026 → 17-03-2026) يتم تطبيق الدوام تلقائيًا: 09:30 إلى 15:30 بغض النظر عن وقت البداية المختار.")
+    st.info("🕋 خلال رمضان (18-02-2026 → 17-03-2026) يتم تطبيق الدوام تلقائيًا: 09:30 إلى 15:30.")
+    st.info("🚪 يتم احتساب الخروج المبكر تلقائيًا عند أي خروج قبل نهاية الدوام: 17:00 في الأيام العادية و15:30 في رمضان.")
 
 if not uploaded_file:
     st.info("ارفع ملف البصمة من القائمة الجانبية لعرض التقرير.")
@@ -837,7 +816,6 @@ job = safe_str(emp.get("job_title", ""))
 late_emp = late[late["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if late is not None and not late.empty else pd.DataFrame()
 abs_emp = absence[absence["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if absence is not None and not absence.empty else pd.DataFrame()
 
-# ✅ هذا يستخدم جدول المستثنى النهائي (نفس late_details لكن نعرض فقط interesting)
 exempt_emp = late_emp.copy() if not late_emp.empty else pd.DataFrame()
 
 if not late_emp.empty and "weekday" in late_emp.columns:
@@ -868,7 +846,6 @@ sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑
 fri_note = "🛑 إجازة الجمعة"
 st.caption(f"{fri_note} • {sat_note}")
 
-# ✅ بطاقة الموظف في البداية
 st.markdown(
     f"""
 <div class="card">
@@ -885,33 +862,48 @@ st.markdown(
 )
 
 # KPIs
-k1, k2, k3 = st.columns(3)
+k1, k2, k3, k4 = st.columns(4)
 k1.markdown(
     f'<div class="kpi"><div class="v">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="l">إجمالي دقائق التأخير</div></div>',
     unsafe_allow_html=True,
 )
 k2.markdown(
-    f'<div class="kpi"><div class="v">{int(emp.get("late_days",0) or 0)}</div><div class="l">عدد أيام التأخير</div></div>',
+    f'<div class="kpi"><div class="v">{int(emp.get("total_early_leave_minutes",0) or 0)}</div><div class="l">إجمالي دقائق الخروج المبكر</div></div>',
     unsafe_allow_html=True,
 )
 k3.markdown(
+    f'<div class="kpi"><div class="v">{int(emp.get("late_days",0) or 0)}</div><div class="l">عدد أيام التأخير</div></div>',
+    unsafe_allow_html=True,
+)
+k4.markdown(
     f'<div class="kpi"><div class="v">{int(emp.get("absent_days",0) or 0)}</div><div class="l">عدد أيام الغياب</div></div>',
+    unsafe_allow_html=True,
+)
+
+k5, k6 = st.columns(2)
+k5.markdown(
+    f'<div class="kpi"><div class="v">{int(emp.get("early_leave_days",0) or 0)}</div><div class="l">عدد أيام الخروج المبكر</div></div>',
+    unsafe_allow_html=True,
+)
+k6.markdown(
+    f'<div class="kpi"><div class="v">{int((emp.get("total_late_minutes",0) or 0) + (emp.get("total_early_leave_minutes",0) or 0))}</div><div class="l">إجمالي دقائق التأخيرات الزمنية</div></div>',
     unsafe_allow_html=True,
 )
 
 attendance_rule = safe_str(emp.get("attendance_calculation", "")).strip().lower()
 
-# ✅ صندوق الصافي للمستثنى
 if attendance_rule == "daily_hours":
     total_late = int(emp.get("total_late_minutes", 0) or 0)
+    total_early_leave = int(emp.get("total_early_leave_minutes", 0) or 0)
     total_overtime = int(emp.get("total_overtime_minutes", 0) or 0)
-    net = total_overtime - total_late
+    total_deficit = total_late + total_early_leave
+    net = total_overtime - total_deficit
 
     if net > 0:
         net_label = "صافي إضافي"
         net_class = "net-good"
     elif net < 0:
-        net_label = "صافي تأخير"
+        net_label = "صافي عجز"
         net_class = "net-bad"
     else:
         net_label = "متعادل"
@@ -920,9 +912,9 @@ if attendance_rule == "daily_hours":
     st.markdown(
         f"""
         <div class="net-box">
-          <div class="net-title">🧾 نتيجة الاحتساب (مستثنى: الإضافي بعد نهاية الدوام)</div>
+          <div class="net-title">🧾 نتيجة الاحتساب للمستثنى</div>
           <div class="net-big {net_class}">{net_label}: {mm_to_hhmm(net)}</div>
-          <div class="net-sub">الصافي = إجمالي التعويض/الإضافي بعد نهاية الدوام − إجمالي التأخير بعد بداية الدوام</div>
+          <div class="net-sub">الصافي = إجمالي الإضافي − (إجمالي التأخير + إجمالي الخروج المبكر)</div>
 
           <div class="net-row">
             <div class="net-pill">
@@ -930,8 +922,38 @@ if attendance_rule == "daily_hours":
               <span>(بعد بداية الدوام + السماح)</span>
             </div>
             <div class="net-pill">
-              ⬆️ إجمالي التعويض/الإضافي: <b>{mm_to_hhmm(total_overtime)}</b>
-              <span>(بعد نهاية الدوام — رمضان 15:30 / غيره 17:00)</span>
+              🚪 إجمالي الخروج المبكر: <b>{mm_to_hhmm(total_early_leave)}</b>
+              <span>(قبل نهاية الدوام)</span>
+            </div>
+            <div class="net-pill">
+              ⬆️ إجمالي الإضافي: <b>{mm_to_hhmm(total_overtime)}</b>
+              <span>(بعد نهاية الدوام)</span>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    total_late = int(emp.get("total_late_minutes", 0) or 0)
+    total_early_leave = int(emp.get("total_early_leave_minutes", 0) or 0)
+    total_deficit = total_late + total_early_leave
+
+    st.markdown(
+        f"""
+        <div class="net-box">
+          <div class="net-title">🧾 ملخص الاحتساب</div>
+          <div class="net-big net-bad">إجمالي التأخيرات: {mm_to_hhmm(total_deficit)}</div>
+          <div class="net-sub">إجمالي التأخيرات = التأخير + الخروج المبكر</div>
+
+          <div class="net-row">
+            <div class="net-pill">
+              ⬇️ إجمالي التأخير: <b>{mm_to_hhmm(total_late)}</b>
+              <span>(بعد بداية الدوام + السماح)</span>
+            </div>
+            <div class="net-pill">
+              🚪 إجمالي الخروج المبكر: <b>{mm_to_hhmm(total_early_leave)}</b>
+              <span>(قبل نهاية الدوام)</span>
             </div>
           </div>
         </div>
@@ -941,100 +963,98 @@ if attendance_rule == "daily_hours":
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-right, left = st.columns(2, gap="large")
+col1, col2, col3 = st.columns(3, gap="large")
 
 # =========================
-# ✅ شاشة المستثنين: أيام بها late أو overtime فقط، مع أول/آخر بصمة
+# التأخير / الخروج المبكر / الإضافي
 # =========================
-with right:
-    title_box = "⏱ التأخير / التعويض (مستثنى)" if attendance_rule == "daily_hours" else "⏱ التأخير"
+with col1:
+    title_box = "⏱ التأخير / الخروج المبكر / الإضافي" if attendance_rule == "daily_hours" else "⏱ التأخير / الخروج المبكر"
     st.markdown(f'<div class="card"><div class="card-title">{title_box}</div>', unsafe_allow_html=True)
 
-    if attendance_rule == "daily_hours":
-        if exempt_emp is None or exempt_emp.empty:
-            st.success("لا يوجد تأخير أو تعويض ✅")
-        else:
-            x = exempt_emp.copy()
-            if "date" in x.columns:
-                x["date"] = pd.to_datetime(x["date"], errors="coerce")
-                x = x.sort_values("date")
-
-            for _, r in x.iterrows():
-                day = safe_str(r.get("weekday_ar", r.get("weekday", "")))
-                d = fmt_date(r.get("date"))
-
-                fi = r.get("first_punch_time", "")
-                lo = r.get("last_punch_time", "")
-
-                try:
-                    fi_str = pd.to_datetime(str(fi), errors="coerce").strftime("%H:%M") if str(fi) not in ["", "NaT"] else ""
-                except Exception:
-                    fi_str = ""
-                try:
-                    lo_str = pd.to_datetime(str(lo), errors="coerce").strftime("%H:%M") if str(lo) not in ["", "NaT"] else ""
-                except Exception:
-                    lo_str = ""
-
-                worked = mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))
-                late_m = int(r.get("late_minutes", 0) or 0)
-                ot_m = int(r.get("overtime_minutes", 0) or 0)
-
-                parts = []
-                if late_m > 0:
-                    parts.append(f"<b class='err'>تأخير: {mm_to_hhmm(late_m)}</b>")
-                if ot_m > 0:
-                    parts.append(f"<b class='ok'>تعويض/إضافي: {mm_to_hhmm(ot_m)}</b>")
-                status_html = " • ".join(parts) if parts else "<b class='muted'>—</b>"
-
-                st.markdown(
-                    f"""
-                    <div class="list-item">
-                        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                            <div>
-                                <span class="badge">{day}</span>
-                                <span class="muted"> {d}</span>
-                            </div>
-                            <div style="font-weight:900">{status_html}</div>
-                        </div>
-                        <div class="muted" style="margin-top:6px">
-                            أول بصمة: <b>{fi_str}</b> — آخر بصمة: <b>{lo_str}</b>
-                            <span style="margin:0 10px">|</span>
-                            ساعات العمل: <b>{worked}</b>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+    if late_emp is None or late_emp.empty:
+        st.success("لا يوجد سجلات مخالفة ✅")
     else:
-        if late_emp.empty:
-            st.success("لا يوجد تأخير ✅")
-        else:
-            late_emp = late_emp.sort_values("date") if "date" in late_emp.columns else late_emp
-            for _, r in late_emp.iterrows():
-                fp = r.get("first_punch_time", "")
-                try:
-                    fp_str = pd.to_datetime(str(fp), errors="coerce").strftime("%H:%M") if str(fp) not in ["", "NaT"] else ""
-                except Exception:
-                    fp_str = ""
+        x = late_emp.copy()
+        if "date" in x.columns:
+            x["date"] = pd.to_datetime(x["date"], errors="coerce")
+            x = x.sort_values("date")
 
-                st.markdown(
-                    f"""
-                    <div class="list-item">
-                        <b class="warn">{int(r.get('late_minutes',0) or 0)} دقيقة</b>
-                        <span class="muted"> — أول بصمة {fp_str}</span><br>
-                        <span>{fmt_date(r.get('date'))}</span>
-                        <span class="badge">{safe_str(r.get('weekday_ar',''))}</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        for _, r in x.iterrows():
+            day = safe_str(r.get("weekday_ar", r.get("weekday", "")))
+            d = fmt_date(r.get("date"))
+
+            fi = r.get("first_punch_time", "")
+            lo = r.get("last_punch_time", "")
+
+            try:
+                fi_str = pd.to_datetime(str(fi), errors="coerce").strftime("%H:%M") if str(fi) not in ["", "NaT"] else ""
+            except Exception:
+                fi_str = ""
+
+            try:
+                lo_str = pd.to_datetime(str(lo), errors="coerce").strftime("%H:%M") if str(lo) not in ["", "NaT"] else ""
+            except Exception:
+                lo_str = ""
+
+            worked = mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))
+            late_m = int(r.get("late_minutes", 0) or 0)
+            early_m = int(r.get("early_leave_minutes", 0) or 0)
+            ot_m = int(r.get("overtime_minutes", 0) or 0)
+
+            with st.container(border=True):
+                top_left, top_right = st.columns([1, 1])
+
+                with top_left:
+                    st.caption(f"{day} — {d}")
+
+                with top_right:
+                    parts = []
+                    if late_m > 0:
+                        parts.append(f"⏱ تأخير: {mm_to_hhmm(late_m)}")
+                    if early_m > 0:
+                        parts.append(f"🚪 خروج مبكر: {mm_to_hhmm(early_m)}")
+                    if ot_m > 0:
+                        parts.append(f"⬆️ إضافي: {mm_to_hhmm(ot_m)}")
+
+                    st.write(" • ".join(parts) if parts else "لا يوجد")
+
+                st.write(f"أول بصمة: {fi_str} — آخر بصمة: {lo_str}")
+
+                if attendance_rule == "daily_hours":
+                    st.write(f"ساعات العمل: {worked}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# =========================
-# Absence
-# =========================
-with left:
+
+with col2:
+    st.markdown('<div class="card"><div class="card-title">🚪 الخروج المبكر</div>', unsafe_allow_html=True)
+
+    if late_emp.empty or "early_leave_minutes" not in late_emp.columns or late_emp["early_leave_minutes"].fillna(0).sum() == 0:
+        st.success("لا يوجد خروج مبكر ✅")
+    else:
+        x = late_emp.copy()
+        if "date" in x.columns:
+            x["date"] = pd.to_datetime(x["date"], errors="coerce")
+            x = x.sort_values("date")
+        x = x[x["early_leave_minutes"].fillna(0) > 0]
+
+        for _, r in x.iterrows():
+            lp = r.get("last_punch_time", "")
+            try:
+                lp_str = pd.to_datetime(str(lp), errors="coerce").strftime("%H:%M") if str(lp) not in ["", "NaT"] else ""
+            except Exception:
+                lp_str = ""
+
+            with st.container(border=True):
+                st.write(f"🚪 خروج مبكر: {mm_to_hhmm(int(r.get('early_leave_minutes', 0) or 0))}")
+                st.write(f"آخر بصمة: {lp_str}")
+                st.caption(f"{fmt_date(r.get('date'))} — {safe_str(r.get('weekday_ar', ''))}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+with col3:
     st.markdown('<div class="card"><div class="card-title">🚫 الغياب</div>', unsafe_allow_html=True)
 
     if abs_emp.empty:
@@ -1042,21 +1062,15 @@ with left:
     else:
         abs_emp = abs_emp.sort_values("date") if "date" in abs_emp.columns else abs_emp
         for _, r in abs_emp.iterrows():
-            st.markdown(
-                f"""
-                <div class="list-item">
-                    <b class="err">غياب</b> — {fmt_date(r.get('date'))}
-                    <span class="badge">{safe_str(r.get('weekday_ar',''))}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.write(f"🚫 غياب — {fmt_date(r.get('date'))}")
+                st.caption(safe_str(r.get("weekday_ar", "")))
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 # =========================
-# PDF Download + Logout (في sidebar)
+# PDF Download + Logout
 # =========================
 with st.sidebar:
     st.divider()
