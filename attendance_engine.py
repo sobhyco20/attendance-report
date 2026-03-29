@@ -106,6 +106,20 @@ RAMADAN_END_TIME   = "15:30"
 # ✅ الدوام العادي
 DEFAULT_END_TIME = "17:00"
 
+# =========================
+# ✅ إجازة عيد الفطر
+# =========================
+EID_FROM = pd.Timestamp("2026-03-19")
+EID_TO   = pd.Timestamp("2026-03-23")
+
+def _is_eid_holiday(d) -> bool:
+    if pd.isna(d) or d is None:
+        return False
+    dd = pd.to_datetime(d).normalize()
+    return (dd >= EID_FROM) and (dd <= EID_TO)
+
+
+
 
 def process_attendance(
     attendance_file,
@@ -270,14 +284,18 @@ def process_attendance(
         saturday_is_workday = (not is_saudi) and has_sat_presence
         schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
 
-        def is_workday(day_name: str) -> bool:
+        def is_workday(day_name: str, date_val=None) -> bool:
+            # ✅ استبعاد إجازة العيد بالكامل
+            if _is_eid_holiday(date_val):
+                return False
+        
             if day_name == "Friday":
                 return False
             if day_name == "Saturday":
                 return saturday_is_workday
             return True
 
-        emp_df["is_workday"] = emp_df["weekday"].apply(is_workday)
+        emp_df["is_workday"] = emp_df.apply(lambda r: is_workday(r["weekday"], r["date"]), axis=1)
 
         # =========================
         # ✅ فترة الشهر: من 8 إلى 7
@@ -297,7 +315,10 @@ def process_attendance(
         # ✅ الغياب
         # =========================
         date_range = pd.date_range(date_min.normalize(), date_max.normalize(), freq="D")
-        expected_days = [d for d in date_range if is_workday(d.day_name())]
+        expected_days = [
+            d for d in date_range
+            if is_workday(d.day_name(), d)
+        ]
         present_days = set(emp_df["date"].dt.date.dropna().unique())
         absent_days = [d for d in expected_days if d.date() not in present_days]
 
@@ -331,7 +352,7 @@ def process_attendance(
             def calc_late(row):
                 if row["weekday"] == "Saturday":
                     return 0
-                if not row["is_workday"]:
+                if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
                 if row["first_td"] is None:
                     return 0
@@ -344,7 +365,7 @@ def process_attendance(
             def calc_early_leave(row):
                 if row["weekday"] == "Saturday":
                     return 0
-                if not row["is_workday"]:
+                if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
                 if row["last_td"] is None:
                     return 0
@@ -435,7 +456,7 @@ def process_attendance(
             early_leave_list = []
 
             for _, row in agg.iterrows():
-                if not bool(row["is_workday"]):
+                if not bool(row["is_workday"]) or _is_eid_holiday(row.get("date_only")):
                     worked_minutes = 0
                     late_m = 0
                     overtime_m = 0
