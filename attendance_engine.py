@@ -97,7 +97,7 @@ def _detect_attendance_rule(emp_row: pd.Series) -> str:
 
 # ✅ رمضان: من 18-02-2026 إلى 17-03-2026
 RAMADAN_FROM = pd.Timestamp("2026-02-18")
-RAMADAN_TO   = pd.Timestamp("2026-03-17")
+RAMADAN_TO   = pd.Timestamp("2026-03-18")
 
 # ✅ دوام رمضان
 RAMADAN_START_TIME = "09:30"
