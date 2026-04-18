@@ -15,6 +15,7 @@ WEEKDAY_AR = {
     "Sunday": "الأحد",
 }
 
+
 def weekday_ar(day) -> str:
     if day is None or (isinstance(day, float) and pd.isna(day)):
         return ""
@@ -67,10 +68,6 @@ def _norm_str(x) -> str:
 
 
 def _detect_attendance_rule(emp_row: pd.Series) -> str:
-    """
-    يحاول تحديد قاعدة احتساب الحضور للموظف.
-    المطلوب: المستثنين = daily_hours
-    """
     candidates = [
         "attendance_calculation",
         "Attendance Calculation",
@@ -95,22 +92,15 @@ def _detect_attendance_rule(emp_row: pd.Series) -> str:
     return ""
 
 
-# ✅ رمضان: من 18-02-2026 إلى 17-03-2026
 RAMADAN_FROM = pd.Timestamp("2026-02-18")
-RAMADAN_TO   = pd.Timestamp("2026-03-18")
-
-# ✅ دوام رمضان
+RAMADAN_TO = pd.Timestamp("2026-03-18")
 RAMADAN_START_TIME = "09:30"
-RAMADAN_END_TIME   = "15:30"
-
-# ✅ الدوام العادي
+RAMADAN_END_TIME = "15:30"
 DEFAULT_END_TIME = "17:00"
 
-# =========================
-# ✅ إجازة عيد الفطر
-# =========================
 EID_FROM = pd.Timestamp("2026-03-19")
-EID_TO   = pd.Timestamp("2026-03-23")
+EID_TO = pd.Timestamp("2026-03-23")
+
 
 def _is_eid_holiday(d) -> bool:
     if pd.isna(d) or d is None:
@@ -118,6 +108,72 @@ def _is_eid_holiday(d) -> bool:
     dd = pd.to_datetime(d).normalize()
     return (dd >= EID_FROM) and (dd <= EID_TO)
 
+
+def _prepare_leaves_df(approved_leaves_df: pd.DataFrame | None) -> pd.DataFrame:
+    if approved_leaves_df is None or approved_leaves_df.empty:
+        return pd.DataFrame()
+
+    lv = approved_leaves_df.copy()
+    rename_map = {
+        "employee_id": "employee_id",
+        "Employee ID": "employee_id",
+        "Personnel Number": "employee_id",
+        "Emp ID": "employee_id",
+        "employee_no": "employee_no",
+        "Employee No": "employee_no",
+        "name_ar": "name_ar",
+        "Arabic name": "name_ar",
+        "name_en": "name_en",
+        "Search name": "name_en",
+        "leave_type": "leave_type",
+        "type": "leave_type",
+        "نوع الإجازة": "leave_type",
+        "start_date": "start_date",
+        "from_date": "start_date",
+        "من": "start_date",
+        "end_date": "end_date",
+        "to_date": "end_date",
+        "إلى": "end_date",
+        "status": "status",
+        "approval_status": "status",
+        "الحالة": "status",
+        "attachment_name": "attachment_name",
+        "attachment_path": "attachment_path",
+        "notes": "notes",
+    }
+    lv = lv.rename(columns={k: v for k, v in rename_map.items() if k in lv.columns})
+
+    if "employee_id" not in lv.columns and "employee_no" in lv.columns:
+        lv["employee_id"] = lv["employee_no"]
+    if "employee_no" not in lv.columns and "employee_id" in lv.columns:
+        lv["employee_no"] = lv["employee_id"]
+
+    if "employee_id" not in lv.columns or "start_date" not in lv.columns or "end_date" not in lv.columns:
+        return pd.DataFrame()
+
+    lv["employee_id"] = lv["employee_id"].astype(str).str.strip()
+    lv["employee_no"] = lv.get("employee_no", lv["employee_id"]).astype(str).str.strip()
+    lv["start_date"] = pd.to_datetime(lv["start_date"], errors="coerce").dt.normalize()
+    lv["end_date"] = pd.to_datetime(lv["end_date"], errors="coerce").dt.normalize()
+    lv = lv.dropna(subset=["employee_id", "start_date", "end_date"]).copy()
+
+    if "status" not in lv.columns:
+        lv["status"] = "معتمدة"
+
+    lv["status"] = lv["status"].fillna("").astype(str).str.strip()
+    approved_tokens = {"approved", "approve", "معتمد", "معتمدة", "اعتماد", "تمت الموافقة", "active", "نشط"}
+    lv = lv[lv["status"].str.lower().isin({t.lower() for t in approved_tokens}) | (lv["status"] == "")].copy()
+
+    if "leave_type" not in lv.columns:
+        lv["leave_type"] = "إجازة"
+    if "attachment_name" not in lv.columns:
+        lv["attachment_name"] = ""
+    if "attachment_path" not in lv.columns:
+        lv["attachment_path"] = ""
+    if "notes" not in lv.columns:
+        lv["notes"] = ""
+
+    return lv.sort_values(["employee_id", "start_date", "end_date"])
 
 
 
@@ -128,11 +184,11 @@ def process_attendance(
     schedule_mode="by_nationality",
     employees_df: pd.DataFrame | None = None,
     daily_required_hours: float = 9.0,
+    approved_leaves_df: pd.DataFrame | None = None,
 ):
-    # 1) قراءة البصمة
     df = _read_attendance_any_format(attendance_file)
+    leaves_df = _prepare_leaves_df(approved_leaves_df)
 
-    # 2) rename
     df = df.rename(
         columns={
             "Employee ID": "employee_id",
@@ -160,29 +216,22 @@ def process_attendance(
     df["first_punch_time"] = fp.dt.time
     df["last_punch_time"] = lp.dt.time
 
-    # 3) دمج بيانات الموظفين
     if employees_df is not None and not employees_df.empty:
         emp = employees_df.copy()
-
         emp = emp.rename(
             columns={
                 "Personnel Number": "employee_id",
                 "Employee ID": "employee_id",
                 "Emp ID": "employee_id",
                 "ID": "employee_id",
-
                 "Arabic name": "name_ar",
                 "Search name": "name_en",
                 "emp_name": "name_ar",
-
                 "Contrac Profession": "job_title",
-
                 "nationality": "nationality",
                 "Nationality": "nationality",
                 "الجنسية": "nationality",
-
                 "Section | Department": "department_emp",
-
                 "Employee No": "employee_no",
                 "الرقم الوظيفي": "employee_no",
             }
@@ -207,7 +256,6 @@ def process_attendance(
 
         df = df.merge(emp[keep_cols], on="employee_id", how="left")
 
-    # 4) إعدادات الوقت
     hh, mm = start_time.split(":")
     default_start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
     default_late_limit = default_start_td + dt.timedelta(minutes=int(grace_minutes))
@@ -229,17 +277,11 @@ def process_attendance(
         return (dd >= RAMADAN_FROM) and (dd <= RAMADAN_TO)
 
     def shift_params_for_date(d):
-        """
-        يرجع:
-        start_td: بداية الدوام
-        late_limit: بداية الدوام + السماح
-        end_td: نهاية الدوام
-        """
         if _is_ramadan_date(d):
             return ram_start_td, ram_late_limit, ram_end_td
         return default_start_td, default_late_limit, default_end_td
 
-    results, late_details, absence_details, exempt_details = [], [], [], []
+    results, late_details, absence_details, exempt_details, leave_details = [], [], [], [], []
 
     def pick_first(series, fallback=""):
         if series is None:
@@ -260,13 +302,14 @@ def process_attendance(
 
     for emp_id, emp_df in df.groupby("employee_id", dropna=False):
         emp_df = emp_df.copy()
+        emp_id = str(emp_id).strip()
 
         name_ar = pick_first(emp_df.get("name_ar"), pick_first(emp_df.get("name_att"), ""))
         name_en = pick_first(emp_df.get("name_en"), "")
         emp_dept = pick_first(emp_df.get("department_emp"), pick_first(emp_df.get("department_att"), ""))
-        emp_job  = pick_first(emp_df.get("job_title"), "")
-        emp_nat  = pick_first(emp_df.get("nationality"), "")
-        emp_no   = pick_first(emp_df.get("employee_no"), emp_id)
+        emp_job = pick_first(emp_df.get("job_title"), "")
+        emp_nat = pick_first(emp_df.get("nationality"), "")
+        emp_no = pick_first(emp_df.get("employee_no"), emp_id)
 
         is_saudi = _is_saudi(emp_nat)
 
@@ -277,18 +320,13 @@ def process_attendance(
         else:
             attendance_rule = ""
 
-        # =========================
-        # ✅ قاعدة السبت
-        # =========================
         has_sat_presence = (emp_df["weekday"] == "Saturday").any()
         saturday_is_workday = (not is_saudi) and has_sat_presence
         schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
 
         def is_workday(day_name: str, date_val=None) -> bool:
-            # ✅ استبعاد إجازة العيد بالكامل
             if _is_eid_holiday(date_val):
                 return False
-        
             if day_name == "Friday":
                 return False
             if day_name == "Saturday":
@@ -297,9 +335,6 @@ def process_attendance(
 
         emp_df["is_workday"] = emp_df.apply(lambda r: is_workday(r["weekday"], r["date"]), axis=1)
 
-        # =========================
-        # ✅ فترة الشهر: من 8 إلى 7
-        # =========================
         any_date = emp_df["date"].dropna().iloc[0]
         start_date = any_date.replace(day=8)
         if any_date.day < 8:
@@ -311,16 +346,47 @@ def process_attendance(
         if pd.isna(date_min) or pd.isna(date_max):
             continue
 
-        # =========================
-        # ✅ الغياب
-        # =========================
         date_range = pd.date_range(date_min.normalize(), date_max.normalize(), freq="D")
-        expected_days = [
-            d for d in date_range
-            if is_workday(d.day_name(), d)
-        ]
+        expected_days = [d for d in date_range if is_workday(d.day_name(), d)]
         present_days = set(emp_df["date"].dt.date.dropna().unique())
-        absent_days = [d for d in expected_days if d.date() not in present_days]
+
+        emp_leaves = pd.DataFrame()
+        leave_dates = set()
+        if not leaves_df.empty:
+            emp_leaves = leaves_df[leaves_df["employee_id"] == emp_id].copy()
+            if not emp_leaves.empty:
+                emp_leaves = emp_leaves[(emp_leaves["end_date"] >= date_min.normalize()) & (emp_leaves["start_date"] <= date_max.normalize())].copy()
+                for _, lv in emp_leaves.iterrows():
+                    overlap_start = max(lv["start_date"], date_min.normalize())
+                    overlap_end = min(lv["end_date"], date_max.normalize())
+                    for d in pd.date_range(overlap_start, overlap_end, freq="D"):
+                        if is_workday(d.day_name(), d):
+                            leave_dates.add(d.date())
+                            leave_details.append(
+                                {
+                                    "employee_id": emp_id,
+                                    "employee_no": emp_no,
+                                    "name_ar": name_ar,
+                                    "name_en": name_en,
+                                    "job_title": emp_job,
+                                    "nationality": emp_nat,
+                                    "department": emp_dept,
+                                    "date": d.date(),
+                                    "weekday": d.day_name(),
+                                    "weekday_ar": weekday_ar(d.day_name()),
+                                    "schedule": schedule,
+                                    "attendance_calculation": attendance_rule,
+                                    "leave_type": lv.get("leave_type", "إجازة"),
+                                    "status": lv.get("status", "معتمدة"),
+                                    "attachment_name": lv.get("attachment_name", ""),
+                                    "attachment_path": lv.get("attachment_path", ""),
+                                    "notes": lv.get("notes", ""),
+                                    "leave_start": lv.get("start_date"),
+                                    "leave_end": lv.get("end_date"),
+                                }
+                            )
+
+        absent_days = [d for d in expected_days if d.date() not in present_days and d.date() not in leave_dates]
 
         for d in absent_days:
             absence_details.append(
@@ -340,15 +406,10 @@ def process_attendance(
                 }
             )
 
-        # =========================
-        # ✅ التأخير / الخروج المبكر / الإضافي
-        # =========================
         emp_df["first_td"] = emp_df["first_punch_time"].apply(time_to_td)
         emp_df["last_td"] = emp_df["last_punch_time"].apply(time_to_td)
 
-        # ---- حالة الموظف العادي
         if attendance_rule != "daily_hours":
-
             def calc_late(row):
                 if row["weekday"] == "Saturday":
                     return 0
@@ -420,6 +481,7 @@ def process_attendance(
                     "period_from": date_min.date(),
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
+                    "approved_leave_days": len(leave_dates),
                     "late_days": int((emp_df["late_minutes"] > 0).sum()),
                     "total_late_minutes": int(emp_df["late_minutes"].sum()),
                     "early_leave_days": int((emp_df["early_leave_minutes"] > 0).sum()),
@@ -428,8 +490,6 @@ def process_attendance(
                     "total_overtime_minutes": 0,
                 }
             )
-
-        # ---- حالة المستثنى: daily_hours
         else:
             day_group = emp_df.dropna(subset=["date"]).copy()
             day_group["date_only"] = day_group["date"].dt.date
@@ -503,15 +563,13 @@ def process_attendance(
             agg["late_minutes"] = late_list
             agg["overtime_minutes"] = overtime_list
             agg["early_leave_minutes"] = early_leave_list
-
             agg["date"] = pd.to_datetime(agg["date_only"])
 
             interesting = agg[
                 (agg["late_minutes"] > 0) |
                 (agg["overtime_minutes"] > 0) |
                 (agg["early_leave_minutes"] > 0)
-            ].copy()
-            interesting = interesting.sort_values("date")
+            ].copy().sort_values("date")
 
             total_late = int(agg["late_minutes"].sum())
             total_overtime = int(agg["overtime_minutes"].sum())
@@ -572,15 +630,12 @@ def process_attendance(
                     "period_from": date_min.date(),
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
-
+                    "approved_leave_days": len(leave_dates),
                     "late_days": int((agg["late_minutes"] > 0).sum()),
                     "total_late_minutes": total_late,
-
                     "early_leave_days": int((agg["early_leave_minutes"] > 0).sum()),
                     "total_early_leave_minutes": total_early_leave,
-
                     "attendance_calculation": "daily_hours",
-
                     "total_overtime_minutes": total_overtime,
                 }
             )
@@ -590,4 +645,5 @@ def process_attendance(
         pd.DataFrame(late_details),
         pd.DataFrame(absence_details),
         pd.DataFrame(exempt_details),
+        pd.DataFrame(leave_details),
     )
