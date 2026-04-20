@@ -1696,6 +1696,67 @@ with leave_root_tab:
                 else:
                     st.write(f"عدد السجلات: {len(res)}")
                     render_leave_results_table(res)
+        st.markdown("### إجراءات السجلات")
+        action_rows = res.reset_index(drop=True)
+        for idx, r in action_rows.iterrows():
+            with st.container(border=True):
+                a1, a2, a3, a4, a5 = st.columns([3, 2, 2, 1, 1])
+
+                with a1:
+                    st.markdown(f"**{safe_str(r.get('name_ar'))}**")
+                    st.caption(safe_str(r.get("employee_no")))
+
+                with a2:
+                    st.write(f"📌 {safe_str(r.get('leave_type'))}")
+
+                with a3:
+                    st.write(f"📅 {fmt_date(r.get('start_date'))} → {fmt_date(r.get('end_date'))}")
+
+                with a4:
+                    has_attachment = bool(safe_str(r.get("attachment_path", ""))) and os.path.exists(safe_str(r.get("attachment_path", "")))
+                    if has_attachment:
+                        if st.button("📎", key=f"att_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
+                            st.session_state["open_attachment"] = {
+                                "path": safe_str(r.get("attachment_path", "")),
+                                "name": safe_str(r.get("attachment_name", "")),
+                                "leave_id": safe_str(r.get("leave_id", "")),
+                            }
+                            st.rerun()
+                    else:
+                        st.write("—")
+
+                with a5:
+                    col_edit, col_del = st.columns(2)
+
+                    # ✏️ تعديل
+                    with col_edit:
+                        if st.button("✏️", key=f"edit_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
+                            st.session_state["edit_leave_id"] = safe_str(r.get("leave_id"))
+                            st.rerun()
+
+                    # 🗑️ حذف
+                    with col_del:
+                        if st.button("🗑️", key=f"del_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
+
+                            leaves = load_leaves().copy()
+
+                            mask = leaves["leave_id"].astype(str).str.strip() == safe_str(r.get("leave_id"))
+
+                            # 💾 حفظ السجل قبل الحذف
+                            deleted_row = leaves[mask]
+                            if not deleted_row.empty:
+                                st.session_state["last_deleted_leave"] = deleted_row.iloc[0].to_dict()
+
+                            # ❌ حذف فعلي
+                            leaves = leaves[~mask]
+                            save_leaves(leaves)
+
+                            st.success("تم حذف الإجازة")
+                            st.rerun()
+
+
+
+
 
                 # 🔁 زر التراجع عن الحذف
                 if st.session_state.get("last_deleted_leave"):
@@ -1719,63 +1780,6 @@ with leave_root_tab:
                         st.success("تم استرجاع الإجازة بنجاح")
                         st.rerun()
                         
-                    st.markdown("### إجراءات السجلات")
-                    action_rows = res.reset_index(drop=True)
-                    for idx, r in action_rows.iterrows():
-                        with st.container(border=True):
-                            a1, a2, a3, a4, a5 = st.columns([3, 2, 2, 1, 1])
-
-                            with a1:
-                                st.markdown(f"**{safe_str(r.get('name_ar'))}**")
-                                st.caption(safe_str(r.get("employee_no")))
-
-                            with a2:
-                                st.write(f"📌 {safe_str(r.get('leave_type'))}")
-
-                            with a3:
-                                st.write(f"📅 {fmt_date(r.get('start_date'))} → {fmt_date(r.get('end_date'))}")
-
-                            with a4:
-                                has_attachment = bool(safe_str(r.get("attachment_path", ""))) and os.path.exists(safe_str(r.get("attachment_path", "")))
-                                if has_attachment:
-                                    if st.button("📎", key=f"att_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-                                        st.session_state["open_attachment"] = {
-                                            "path": safe_str(r.get("attachment_path", "")),
-                                            "name": safe_str(r.get("attachment_name", "")),
-                                            "leave_id": safe_str(r.get("leave_id", "")),
-                                        }
-                                        st.rerun()
-                                else:
-                                    st.write("—")
-
-                            with a5:
-                                col_edit, col_del = st.columns(2)
-
-                                # ✏️ تعديل
-                                with col_edit:
-                                    if st.button("✏️", key=f"edit_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-                                        st.session_state["edit_leave_id"] = safe_str(r.get("leave_id"))
-                                        st.rerun()
-
-                                # 🗑️ حذف
-                                with col_del:
-                                    if st.button("🗑️", key=f"del_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-
-                                        leaves = load_leaves().copy()
-
-                                        mask = leaves["leave_id"].astype(str).str.strip() == safe_str(r.get("leave_id"))
-
-                                        # 💾 حفظ السجل قبل الحذف
-                                        deleted_row = leaves[mask]
-                                        if not deleted_row.empty:
-                                            st.session_state["last_deleted_leave"] = deleted_row.iloc[0].to_dict()
-
-                                        # ❌ حذف فعلي
-                                        leaves = leaves[~mask]
-                                        save_leaves(leaves)
-
-                                        st.success("تم حذف الإجازة")
-                                        st.rerun()
 
                     pdf_bytes = build_leaves_pdf(res)
                     pdf_name = "leave_report_all.pdf" if view_mode == "كل الموظفين" else f"leave_report_{sanitize_filename(selected_emp_key)}.pdf"
