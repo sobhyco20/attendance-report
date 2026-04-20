@@ -1697,7 +1697,7 @@ with leave_root_tab:
                     st.write(f"عدد السجلات: {len(res)}")
                     render_leave_results_table(res)
 
-                    
+
                     st.markdown("### إجراءات السجلات")
                     action_rows = res.reset_index(drop=True)
                     for idx, r in action_rows.iterrows():
@@ -1742,15 +1742,19 @@ with leave_root_tab:
 
                                         leaves = load_leaves().copy()
 
-                                        mask = leaves["leave_id"].astype(str).str.strip() == safe_str(r.get("leave_id"))
+                                        target_id = safe_str(r.get("leave_id"))
+
+                                        # 🔥 تأكيد تطابق قوي
+                                        leaves["leave_id"] = leaves["leave_id"].astype(str).str.strip()
 
                                         # 💾 حفظ السجل قبل الحذف
-                                        deleted_row = leaves[mask]
+                                        deleted_row = leaves[leaves["leave_id"] == target_id]
                                         if not deleted_row.empty:
                                             st.session_state["last_deleted_leave"] = deleted_row.iloc[0].to_dict()
 
                                         # ❌ حذف فعلي
-                                        leaves = leaves[~mask]
+                                        leaves = leaves[leaves["leave_id"] != target_id]
+
                                         save_leaves(leaves)
 
                                         st.success("تم حذف الإجازة")
