@@ -243,7 +243,9 @@ if "logged_in" not in st.session_state:
 if "login_user" not in st.session_state:
     st.session_state["login_user"] = ""
 
-
+# 🔥 حفظ آخر عملية حذف (Undo)
+if "last_deleted_leave" not in st.session_state:
+    st.session_state["last_deleted_leave"] = None
 # =========================
 # Auth helpers
 # =========================
@@ -1695,6 +1697,28 @@ with leave_root_tab:
                     st.write(f"عدد السجلات: {len(res)}")
                     render_leave_results_table(res)
 
+                # 🔁 زر التراجع عن الحذف
+                if st.session_state.get("last_deleted_leave"):
+
+                    st.warning("تم حذف سجل. يمكنك التراجع.")
+
+                    if st.button("↩️ التراجع عن آخر حذف", use_container_width=True):
+
+                        leaves = load_leaves().copy()
+
+                        # استرجاع السجل
+                        leaves = pd.concat([
+                            leaves,
+                            pd.DataFrame([st.session_state["last_deleted_leave"]])
+                        ], ignore_index=True)
+
+                        save_leaves(leaves)
+
+                        st.session_state["last_deleted_leave"] = None
+
+                        st.success("تم استرجاع الإجازة بنجاح")
+                        st.rerun()
+                        
                     st.markdown("### إجراءات السجلات")
                     action_rows = res.reset_index(drop=True)
                     for idx, r in action_rows.iterrows():
@@ -1725,9 +1749,33 @@ with leave_root_tab:
                                     st.write("—")
 
                             with a5:
-                                if st.button("✏️", key=f"edit_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-                                    st.session_state["edit_leave_id"] = safe_str(r.get("leave_id"))
-                                    st.rerun()
+                                col_edit, col_del = st.columns(2)
+
+                                # ✏️ تعديل
+                                with col_edit:
+                                    if st.button("✏️", key=f"edit_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
+                                        st.session_state["edit_leave_id"] = safe_str(r.get("leave_id"))
+                                        st.rerun()
+
+                                # 🗑️ حذف
+                                with col_del:
+                                    if st.button("🗑️", key=f"del_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
+
+                                        leaves = load_leaves().copy()
+
+                                        mask = leaves["leave_id"].astype(str).str.strip() == safe_str(r.get("leave_id"))
+
+                                        # 💾 حفظ السجل قبل الحذف
+                                        deleted_row = leaves[mask]
+                                        if not deleted_row.empty:
+                                            st.session_state["last_deleted_leave"] = deleted_row.iloc[0].to_dict()
+
+                                        # ❌ حذف فعلي
+                                        leaves = leaves[~mask]
+                                        save_leaves(leaves)
+
+                                        st.success("تم حذف الإجازة")
+                                        st.rerun()
 
                     pdf_bytes = build_leaves_pdf(res)
                     pdf_name = "leave_report_all.pdf" if view_mode == "كل الموظفين" else f"leave_report_{sanitize_filename(selected_emp_key)}.pdf"
