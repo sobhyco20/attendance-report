@@ -456,10 +456,12 @@ def ensure_leaves_file():
 
 def load_leaves() -> pd.DataFrame:
     ensure_leaves_file()
+
     try:
         df = pd.read_excel(LEAVES_PATH)
     except Exception:
         return pd.DataFrame()
+
     if df is None or df.empty:
         return pd.DataFrame(columns=[
             "leave_id", "employee_id", "employee_no", "name_ar", "name_en",
@@ -467,20 +469,25 @@ def load_leaves() -> pd.DataFrame:
             "status", "attachment_name", "attachment_path", "notes",
             "created_at", "created_by",
         ])
-   for c in [
-       "employee_id", "employee_no", "name_ar", "name_en",
-       "department", "job_title", "leave_type", "status",
-       "attachment_name", "attachment_path", "notes",
-       "created_at", "created_by"
-   ]:
-       if c not in df.columns:
-           df[c] = ""
-    df[c] = df[c].astype("object")
-       
+
+    # 🔥 توحيد الأعمدة
+    for c in [
+        "employee_id", "employee_no", "name_ar", "name_en",
+        "department", "job_title", "leave_type", "status",
+        "attachment_name", "attachment_path", "notes",
+        "created_at", "created_by"
+    ]:
+        if c not in df.columns:
+            df[c] = ""
+        df[c] = df[c].astype("object")
+
+    # 🔥 التواريخ
     for c in ["start_date", "end_date"]:
         if c in df.columns:
             df[c] = pd.to_datetime(df[c], errors="coerce").dt.normalize()
+
     return df
+   
 
 
 def save_leaves(df: pd.DataFrame):
