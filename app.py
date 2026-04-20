@@ -467,10 +467,15 @@ def load_leaves() -> pd.DataFrame:
             "status", "attachment_name", "attachment_path", "notes",
             "created_at", "created_by",
         ])
-    for c in ["employee_id", "employee_no", "name_ar", "name_en", "department", "job_title", "leave_type", "status", "attachment_name", "attachment_path", "notes", "created_at", "created_by"]:
-        if c not in df.columns:
-            df[c] = ""
-         df[c] = df[c].astype("object")
+   for c in [
+       "employee_id", "employee_no", "name_ar", "name_en",
+       "department", "job_title", "leave_type", "status",
+       "attachment_name", "attachment_path", "notes",
+       "created_at", "created_by"
+   ]:
+       if c not in df.columns:
+           df[c] = ""
+    df[c] = df[c].astype("object")
        
     for c in ["start_date", "end_date"]:
         if c in df.columns:
