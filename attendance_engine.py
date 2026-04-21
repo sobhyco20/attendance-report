@@ -48,18 +48,26 @@ def _read_attendance_any_format(file) -> pd.DataFrame:
 def time_to_td(t):
     if t is None or pd.isna(t):
         return None
+
     try:
         tt = pd.to_datetime(t, errors="coerce")
         if pd.isna(tt):
             return None
-        return dt.timedelta(hours=tt.hour, minutes=tt.minute, seconds=tt.second)
+
+        # 🔥 الإصلاح هنا
+        return dt.timedelta(
+            hours=tt.hour,
+            minutes=tt.minute,
+            seconds=tt.second
+        )
     except Exception:
         return None
-
 
 # =========================
 # المعالجة الرئيسية
 # =========================
+
+
 def process_attendance(
     attendance_file,
     start_time="08:00",
@@ -82,18 +90,30 @@ def process_attendance(
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["weekday"] = df["date"].dt.day_name()
 
-    # 🔥 التحويل الصحيح
+    # 🔥 تحويل الوقت إلى datetime
     df["first_punch_dt"] = pd.to_datetime(df["first_punch"], errors="coerce")
     df["last_punch_dt"] = pd.to_datetime(df["last_punch"], errors="coerce")
 
-    df["first_td"] = df["first_punch_dt"].apply(time_to_td)
-    df["last_td"] = df["last_punch_dt"].apply(time_to_td)
+    # 🔥 تحويل إلى دقائق (أهم خطوة)
+    df["first_td"] = (
+        df["first_punch_dt"].dt.hour.fillna(0) * 60 +
+        df["first_punch_dt"].dt.minute.fillna(0)
+    )
 
+    df["last_td"] = (
+        df["last_punch_dt"].dt.hour.fillna(0) * 60 +
+        df["last_punch_dt"].dt.minute.fillna(0)
+    )
+
+    # 🔥 وقت بداية الدوام بالدقائق
     hh, mm = start_time.split(":")
-    start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
-    late_limit = start_td + dt.timedelta(minutes=grace_minutes)
+    start_minutes = int(hh) * 60 + int(mm)
 
-    end_td = dt.timedelta(hours=17, minutes=0)
+    # 🔥 حد التأخير
+    late_limit_minutes = start_minutes + grace_minutes
+
+    # 🔥 نهاية الدوام
+    end_minutes = 17 * 60
 
     results = []
     late_details = []
@@ -104,32 +124,29 @@ def process_attendance(
         def calc_late(row):
             first = row.get("first_td")
 
-            if first is None or pd.isna(first):
+            if pd.isna(first):
                 return 0
 
-            try:
-                if first <= late_limit:
-                    return 0
-                return int((first - late_limit).total_seconds() // 60)
-            except Exception:
+            if first <= late_limit_minutes:
                 return 0
+
+            return int(first - late_limit_minutes)
 
         def calc_early(row):
             last = row.get("last_td")
 
-            if last is None or pd.isna(last):
+            if pd.isna(last):
                 return 0
 
-            try:
-                if last >= end_td:
-                    return 0
-                return int((end_td - last).total_seconds() // 60)
-            except Exception:
+            if last >= end_minutes:
                 return 0
+
+            return int(end_minutes - last)
 
         emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
         emp_df["early_minutes"] = emp_df.apply(calc_early, axis=1)
 
+        # التفاصيل
         for _, r in emp_df.iterrows():
             if r["late_minutes"] > 0 or r["early_minutes"] > 0:
                 late_details.append({
@@ -139,6 +156,7 @@ def process_attendance(
                     "early_minutes": int(r["early_minutes"]),
                 })
 
+        # الملخص
         results.append({
             "employee_id": emp_id,
             "late_days": int((emp_df["late_minutes"] > 0).sum()),
@@ -154,3 +172,4 @@ def process_attendance(
         pd.DataFrame(),
         pd.DataFrame(),
     )
+
