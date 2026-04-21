@@ -72,9 +72,13 @@ def process_attendance(
     attendance_file,
     start_time="08:00",
     grace_minutes=15,
+    schedule_mode="by_nationality",   # 🔥 رجّع هذا
     employees_df=None,
+    daily_required_hours=9.0,         # 🔥 رجّع هذا
     approved_leaves_df=None,
 ):
+
+    
     df = _read_attendance_any_format(attendance_file)
 
     df = df.rename(columns={
