@@ -258,6 +258,10 @@ def process_attendance(
 
     hh, mm = start_time.split(":")
     start_minutes = int(hh) * 60 + int(mm)
+    
+    late_limit_minutes = start_minutes + grace_minutes
+    
+    end_minutes = 17 * 60
 
     late_limit_minutes = start_minutes + grace_minutes
     default_start_td = dt.timedelta(hours=int(hh), minutes=int(mm))
