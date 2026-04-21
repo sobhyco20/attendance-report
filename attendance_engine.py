@@ -413,28 +413,46 @@ def process_attendance(
             def calc_late(row):
                 if row["weekday"] == "Saturday":
                     return 0
+            
                 if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
-                if row["first_td"] is None:
+            
+                first = row.get("first_td")
+            
+                # 🔥 الحل الحقيقي هنا
+                if first is None or pd.isna(first):
                     return 0
-
+            
                 _, late_limit_day, _ = shift_params_for_date(row.get("date"))
-                if row["first_td"] <= late_limit_day:
+            
+                try:
+                    if first <= late_limit_day:
+                        return 0
+                    return int((first - late_limit_day).total_seconds() // 60)
+                except Exception:
                     return 0
-                return int((row["first_td"] - late_limit_day).total_seconds() // 60)
 
             def calc_early_leave(row):
                 if row["weekday"] == "Saturday":
                     return 0
+            
                 if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
-                if row["last_td"] is None:
+            
+                last = row.get("last_td")
+            
+                # 🔥 نفس الحماية
+                if last is None or pd.isna(last):
                     return 0
-
+            
                 _, _, end_td_day = shift_params_for_date(row.get("date"))
-                if row["last_td"] >= end_td_day:
+            
+                try:
+                    if last >= end_td_day:
+                        return 0
+                    return int((end_td_day - last).total_seconds() // 60)
+                except Exception:
                     return 0
-                return int((end_td_day - row["last_td"]).total_seconds() // 60)
 
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
             emp_df["early_leave_minutes"] = emp_df.apply(calc_early_leave, axis=1)
