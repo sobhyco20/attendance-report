@@ -411,17 +411,15 @@ def process_attendance(
 
         if attendance_rule != "daily_hours":
             def calc_late(row):
-                if row["weekday"] == "Saturday":
+                first = row.get("first_td")
+            
+                if pd.isna(first):
                     return 0
-                if not row["is_workday"] or _is_eid_holiday(row.get("date")):
+            
+                if first <= late_limit_minutes:
                     return 0
-                if row["first_td"] is None:
-                    return 0
-
-                _, late_limit_day, _ = shift_params_for_date(row.get("date"))
-                if row["first_td"] <= late_limit_day:
-                    return 0
-                return int((row["first_td"] - late_limit_day).total_seconds() // 60)
+            
+                return int(first - late_limit_minutes)
 
             def calc_early_leave(row):
                 if row["weekday"] == "Saturday":
