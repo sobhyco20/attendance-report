@@ -377,31 +377,38 @@ def fmt_date(d):
 
 
 def month_year_title(emp_row):
-    y, m = "", ""
-    p_to = emp_row.get("period_to", "")
     try:
-        dt_to = pd.to_datetime(p_to)
-        y = dt_to.year
-        m = dt_to.month
+        m = emp_row.get("month")
+        y = emp_row.get("year")
+
+        # 🔥 حماية من القيم الفارغة
+        if pd.isna(m) or m is None:
+            return "تقرير الموظف"
+
+        if pd.isna(y) or y is None:
+            return f"تقرير الموظف عن شهر {int(m):02d}"
+
+        return f"تقرير الموظف عن شهر {int(m):02d} - {int(y)}"
+
     except Exception:
-        pass
-    if y and m:
-        return f"تقرير الموظف عن شهر {m:02d} - {y}"
-    return "تقرير الموظف"
+        return "تقرير الموظف"
 
 
 def month_year_title_en(emp_row):
-    y, m = "", ""
-    p_to = emp_row.get("period_to", "")
     try:
-        dt_to = pd.to_datetime(p_to)
-        y = dt_to.year
-        m = dt_to.month
+        m = emp_row.get("month")
+        y = emp_row.get("year")
+
+        if pd.isna(m) or m is None:
+            return "Employee Report"
+
+        if pd.isna(y) or y is None:
+            return f"Employee Report - Month {int(m):02d}"
+
+        return f"Employee Report - {int(m):02d}/{int(y)}"
+
     except Exception:
-        pass
-    if y and m:
-        return f"Employee Monthly Report - {m:02d}/{y}"
-    return "Employee Report"
+        return "Employee Report"
 
 
 def sanitize_filename(s: str) -> str:
