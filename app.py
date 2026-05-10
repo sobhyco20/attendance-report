@@ -1055,7 +1055,22 @@ employees_df = load_employees_silent()
 leaves_df = load_leaves()
 employee_lookup = get_employee_lookup(employees_df)
 
+st.write("LEAVES PATH:", LEAVES_PATH)
 
+if os.path.exists(LEAVES_PATH):
+
+    st.success("ملف الإجازات موجود")
+
+    try:
+        test_df = pd.read_excel(LEAVES_PATH)
+
+        st.write(test_df)
+
+    except Exception as e:
+        st.error(e)
+
+else:
+    st.error("ملف الإجازات غير موجود")
 
 if "show_leaves_result" not in st.session_state:
     st.session_state["show_leaves_result"] = False
