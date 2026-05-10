@@ -9,6 +9,14 @@ from xml.sax.saxutils import escape
 import pandas as pd
 import streamlit as st
 
+
+from database import (
+    load_leaves_db,
+    insert_leave,
+    delete_leave
+)
+
+
 from attendance_engine import process_attendance, WEEKDAY_AR
 
 # PDF (ReportLab)
@@ -456,41 +464,42 @@ def ensure_leaves_file():
         pd.DataFrame(columns=cols).to_excel(LEAVES_PATH, index=False)
 
 
-def load_leaves() -> pd.DataFrame:
-    ensure_leaves_file()
+def load_leaves():
 
-    try:
-        df = pd.read_excel(LEAVES_PATH)
-    except Exception:
-        return pd.DataFrame()
+    df = load_leaves_db()
 
     if df is None or df.empty:
+
         return pd.DataFrame(columns=[
-            "leave_id", "employee_id", "employee_no", "name_ar", "name_en",
-            "department", "job_title", "leave_type", "start_date", "end_date",
-            "status", "attachment_name", "attachment_path", "notes",
-            "created_at", "created_by",
+
+            "leave_id",
+            "employee_id",
+            "employee_no",
+            "name_ar",
+            "name_en",
+            "department",
+            "job_title",
+            "leave_type",
+            "start_date",
+            "end_date",
+            "status",
+            "attachment_name",
+            "attachment_path",
+            "notes",
+            "created_at",
+            "created_by",
         ])
 
-    # 🔥 توحيد الأعمدة
-    for c in [
-        "employee_id", "employee_no", "name_ar", "name_en",
-        "department", "job_title", "leave_type", "status",
-        "attachment_name", "attachment_path", "notes",
-        "created_at", "created_by"
-    ]:
-        if c not in df.columns:
-            df[c] = ""
-        df[c] = df[c].astype("object")
-
-    # 🔥 التواريخ
     for c in ["start_date", "end_date"]:
+
         if c in df.columns:
-            df[c] = pd.to_datetime(df[c], errors="coerce").dt.normalize()
+
+            df[c] = pd.to_datetime(
+                df[c],
+                errors="coerce"
+            )
 
     return df
-   
-
 
 def save_leaves(df: pd.DataFrame):
     ensure_leaves_file()
@@ -556,9 +565,8 @@ def save_leave_attachment(uploaded_file, employee_id: str, start_date, end_date)
 
 
 def add_leave_record(record: dict):
-    leaves = load_leaves()
-    leaves = pd.concat([leaves, pd.DataFrame([record])], ignore_index=True)
-    save_leaves(leaves)
+
+    insert_leave(record)
 
 
 def filter_leaves(leaves_df: pd.DataFrame, employee_key: str = "", start_date=None, end_date=None) -> pd.DataFrame:
@@ -1055,22 +1063,6 @@ employees_df = load_employees_silent()
 leaves_df = load_leaves()
 employee_lookup = get_employee_lookup(employees_df)
 
-st.write("LEAVES PATH:", LEAVES_PATH)
-
-if os.path.exists(LEAVES_PATH):
-
-    st.success("ملف الإجازات موجود")
-
-    try:
-        test_df = pd.read_excel(LEAVES_PATH)
-
-        st.write(test_df)
-
-    except Exception as e:
-        st.error(e)
-
-else:
-    st.error("ملف الإجازات غير موجود")
 
 if "show_leaves_result" not in st.session_state:
     st.session_state["show_leaves_result"] = False
@@ -1562,7 +1554,94 @@ with leave_root_tab:
             options_map = {
                 employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
                 for _, r in employee_lookup.iterrows()
-            }
+                    }
+
+        st.markdown("### 📥 رفع ملف إجازات كامل")
+
+        bulk_file = st.file_uploader(
+            "ارفع ملف Excel للإجازات",
+            type=["xlsx"],
+            key="bulk_leave_upload"
+        )
+
+        if bulk_file:
+
+            try:
+
+                bulk_df = pd.read_excel(bulk_file)
+
+                required_cols = [
+
+                    "employee_id",
+                    "leave_type",
+                    "start_date",
+                    "end_date"
+
+                ]
+
+                missing = [
+                    c for c in required_cols
+                    if c not in bulk_df.columns
+                ]
+
+                if missing:
+
+                    st.error(f"أعمدة ناقصة: {missing}")
+
+                else:
+
+                    bulk_df["start_date"] = pd.to_datetime(
+                        bulk_df["start_date"],
+                        errors="coerce"
+                    )
+
+                    bulk_df["end_date"] = pd.to_datetime(
+                        bulk_df["end_date"],
+                        errors="coerce"
+                    )
+
+                    for _, r in bulk_df.iterrows():
+
+                        add_leave_record({
+
+                            "leave_id": f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+
+                            "employee_id": str(r.get("employee_id", "")).strip(),
+
+                            "employee_no": str(r.get("employee_id", "")).strip(),
+
+                            "name_ar": str(r.get("name_ar", "")),
+                            "name_en": "",
+
+                            "department": "",
+                            "job_title": "",
+
+                            "leave_type": str(r.get("leave_type", "سنوية")),
+
+                            "start_date": r.get("start_date"),
+                            "end_date": r.get("end_date"),
+
+                            "status": "معتمدة",
+
+                            "attachment_name": "",
+                            "attachment_path": "",
+
+                            "notes": str(r.get("notes", "")),
+
+                            "created_at": pd.Timestamp.now(),
+
+                            "created_by": st.session_state.get("login_user"),
+                        })
+
+                    st.success("تم رفع الإجازات بنجاح")
+
+                    st.rerun()
+
+            except Exception as e:
+
+                st.error(e)
+
+
 
             with st.form("leave_form", clear_on_submit=True):
                 selected_label = st.selectbox(
