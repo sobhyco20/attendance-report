@@ -1540,509 +1540,498 @@ def show_attachment_dialog_if_needed():
 
 
 
-
-
 with leave_root_tab:
-    register_tab, view_tab, edit_tab = st.tabs(["➕ تسجيل إجازة", "📊 عرض الإجازات", "✏️ تعديل الإجازات"])
+
+    register_tab, view_tab, edit_tab = st.tabs([
+        "➕ تسجيل إجازة",
+        "📊 عرض الإجازات",
+        "✏️ تعديل الإجازات"
+    ])
+
+    # =========================================================
+    # تسجيل إجازة
+    # =========================================================
 
     with register_tab:
-        st.markdown('<div class="card"><div class="card-title">➕ تسجيل إجازة جديدة</div>', unsafe_allow_html=True)
 
-        if employee_lookup.empty:
-            st.warning("ملف الموظفين غير متوفر، لذلك لا يمكن تسجيل الإجازات.")
-        else:
-            options_map = {
-                employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
-                for _, r in employee_lookup.iterrows()
-                    }
-
-        st.markdown("### 📥 رفع ملف إجازات كامل")
-
-        bulk_file = st.file_uploader(
-            "ارفع ملف Excel للإجازات",
-            type=["xlsx"],
-            key="bulk_leave_upload"
+        st.markdown(
+            '''
+            <div class="card">
+            <div class="card-title">
+            ➕ تسجيل إجازة جديدة
+            </div>
+            ''',
+            unsafe_allow_html=True
         )
 
-        if bulk_file:
+        if employee_lookup.empty:
 
-            try:
+            st.warning(
+                "ملف الموظفين غير متوفر، لذلك لا يمكن تسجيل الإجازات."
+            )
 
-                bulk_df = pd.read_excel(bulk_file)
+        else:
 
-                required_cols = [
+            # =====================================================
+            # خيارات الموظفين
+            # =====================================================
 
-                    "employee_id",
-                    "leave_type",
-                    "start_date",
-                    "end_date"
+            options_map = {
 
-                ]
-
-                missing = [
-                    c for c in required_cols
-                    if c not in bulk_df.columns
-                ]
-
-                if missing:
-
-                    st.error(f"أعمدة ناقصة: {missing}")
-
-                else:
-
-                    bulk_df["start_date"] = pd.to_datetime(
-                        bulk_df["start_date"],
-                        errors="coerce"
+                employee_option_label(r):
+                    (
+                        r.get("employee_id")
+                        or
+                        r.get("employee_no")
                     )
 
-                    bulk_df["end_date"] = pd.to_datetime(
-                        bulk_df["end_date"],
-                        errors="coerce"
-                    )
+                for _, r in employee_lookup.iterrows()
+            }
 
-                    for _, r in bulk_df.iterrows():
+            # =====================================================
+            # الفورم اليدوي (الرئيسي)
+            # =====================================================
 
-                        add_leave_record({
+            st.markdown("### ➕ تسجيل إجازة يدوية")
 
-                            "leave_id": f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+            with st.form(
+                "leave_form",
+                clear_on_submit=True
+            ):
 
-                            "employee_id": str(r.get("employee_id", "")).strip(),
-
-                            "employee_no": str(r.get("employee_id", "")).strip(),
-
-                            "name_ar": str(r.get("name_ar", "")),
-                            "name_en": "",
-
-                            "department": "",
-                            "job_title": "",
-
-                            "leave_type": str(r.get("leave_type", "سنوية")),
-
-                            "start_date": r.get("start_date"),
-                            "end_date": r.get("end_date"),
-
-                            "status": "معتمدة",
-
-                            "attachment_name": "",
-                            "attachment_path": "",
-
-                            "notes": str(r.get("notes", "")),
-
-                            "created_at": pd.Timestamp.now(),
-
-                            "created_by": st.session_state.get("login_user"),
-                        })
-
-                    st.success("تم رفع الإجازات بنجاح")
-
-                    st.rerun()
-
-            except Exception as e:
-
-                st.error(e)
-
-
-
-            with st.form("leave_form", clear_on_submit=True):
                 selected_label = st.selectbox(
+
                     "الموظف",
+
                     options=list(options_map.keys()),
+
                     index=None,
+
                     placeholder="ابحث باسم الموظف..."
+
                 )
 
                 leave_type = st.selectbox(
+
                     "نوع الإجازة",
-                    ["سنوية", "مرضية", "بدون راتب", "اضطرارية", "رسمية", "أخرى"]
+
+                    [
+                        "سنوية",
+                        "مرضية",
+                        "بدون راتب",
+                        "اضطرارية",
+                        "رسمية",
+                        "أخرى"
+                    ]
+
                 )
 
                 c1, c2 = st.columns(2)
-                with c1:
-                    leave_start = st.date_input("من تاريخ", key="leave_start_date")
-                with c2:
-                    leave_end = st.date_input("إلى تاريخ", key="leave_end_date")
 
-                notes = st.text_area("ملاحظات", key="leave_notes_field")
-                leave_file = st.file_uploader(
-                    "إرفاق ملف الإجازة",
-                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx"],
-                    key="leave_attachment_upload"
+                with c1:
+
+                    leave_start = st.date_input(
+                        "من تاريخ",
+                        key="leave_start_date"
+                    )
+
+                with c2:
+
+                    leave_end = st.date_input(
+                        "إلى تاريخ",
+                        key="leave_end_date"
+                    )
+
+                notes = st.text_area(
+                    "ملاحظات",
+                    key="leave_notes_field"
                 )
 
-                submitted = st.form_submit_button("💾 حفظ الإجازة")
+                leave_file = st.file_uploader(
+
+                    "إرفاق ملف الإجازة",
+
+                    type=[
+                        "pdf",
+                        "png",
+                        "jpg",
+                        "jpeg",
+                        "doc",
+                        "docx"
+                    ],
+
+                    key="leave_attachment_upload"
+
+                )
+
+                submitted = st.form_submit_button(
+                    "💾 حفظ الإجازة"
+                )
+
+            # =====================================================
+            # حفظ الإجازة
+            # =====================================================
 
             if submitted:
+
                 if not selected_label:
+
                     st.error("اختر الموظف أولاً")
+
                 elif leave_end < leave_start:
-                    st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
+
+                    st.error(
+                        "تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية"
+                    )
+
                 else:
+
                     key = options_map[selected_label]
-                    emp = find_employee_record(employees_df, key)
+
+                    emp = find_employee_record(
+                        employees_df,
+                        key
+                    )
 
                     if not emp:
-                        st.error("تعذر العثور على بيانات الموظف")
+
+                        st.error(
+                            "تعذر العثور على بيانات الموظف"
+                        )
+
                     else:
-                        attachment_name, attachment_path = save_leave_attachment(
-                            leave_file,
-                            safe_str(emp.get("employee_id")),
-                            leave_start,
-                            leave_end
+
+                        attachment_name, attachment_path = (
+                            save_leave_attachment(
+
+                                leave_file,
+
+                                safe_str(
+                                    emp.get(
+                                        "employee_id"
+                                    )
+                                ),
+
+                                leave_start,
+
+                                leave_end
+                            )
                         )
 
                         add_leave_record({
-                            "leave_id": f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
-                            "employee_id": safe_str(emp.get("employee_id")),
-                            "employee_no": safe_str(emp.get("employee_no")),
-                            "name_ar": safe_str(emp.get("name_ar")),
-                            "name_en": safe_str(emp.get("name_en")),
-                            "department": safe_str(emp.get("department")),
-                            "job_title": safe_str(emp.get("job_title")),
-                            "leave_type": leave_type,
-                            "start_date": pd.Timestamp(leave_start),
-                            "end_date": pd.Timestamp(leave_end),
-                            "status": "معتمدة",
-                            "attachment_name": attachment_name,
-                            "attachment_path": attachment_path,
-                            "notes": notes,
-                            "created_at": pd.Timestamp.now(),
-                            "created_by": st.session_state.get("login_user"),
+
+                            "leave_id":
+                                f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+
+                            "employee_id":
+                                safe_str(
+                                    emp.get(
+                                        "employee_id"
+                                    )
+                                ).replace(".0", "").strip(),
+
+                            "employee_no":
+                                safe_str(
+                                    emp.get(
+                                        "employee_no"
+                                    )
+                                ),
+
+                            "name_ar":
+                                safe_str(
+                                    emp.get(
+                                        "name_ar"
+                                    )
+                                ),
+
+                            "name_en":
+                                safe_str(
+                                    emp.get(
+                                        "name_en"
+                                    )
+                                ),
+
+                            "department":
+                                safe_str(
+                                    emp.get(
+                                        "department"
+                                    )
+                                ),
+
+                            "job_title":
+                                safe_str(
+                                    emp.get(
+                                        "job_title"
+                                    )
+                                ),
+
+                            "leave_type":
+                                leave_type,
+
+                            "start_date":
+                                pd.Timestamp(
+                                    leave_start
+                                ),
+
+                            "end_date":
+                                pd.Timestamp(
+                                    leave_end
+                                ),
+
+                            "status":
+                                "معتمدة",
+
+                            "attachment_name":
+                                attachment_name,
+
+                            "attachment_path":
+                                attachment_path,
+
+                            "notes":
+                                notes,
+
+                            "created_at":
+                                pd.Timestamp.now(),
+
+                            "created_by":
+                                st.session_state.get(
+                                    "login_user"
+                                ),
                         })
 
-                        st.success("تم حفظ الإجازة بنجاح")
+                        st.success(
+                            "✅ تم حفظ الإجازة بنجاح"
+                        )
+
                         st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
+            # =====================================================
+            # فاصل
+            # =====================================================
 
-    with view_tab:
-        st.markdown('<div class="card"><div class="card-title">📊 عرض وتقارير الإجازات</div>', unsafe_allow_html=True)
+            st.markdown("<hr>", unsafe_allow_html=True)
 
-        if employee_lookup.empty:
-            st.info("ملف الموظفين غير متوفر.")
-        else:
-            options_map = {
-                employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
-                for _, r in employee_lookup.iterrows()
-            }
+            # =====================================================
+            # رفع ملف كامل (ثانوي)
+            # =====================================================
 
-            view_mode = st.radio("نوع العرض", ["موظف محدد", "كل الموظفين"], key="leave_view_mode")
-            c1, c2 = st.columns(2)
-            with c1:
-                report_from = st.date_input("من تاريخ", key="leave_report_from")
-            with c2:
-                report_to = st.date_input("إلى تاريخ", key="leave_report_to")
+            st.markdown("### 📥 رفع ملف إجازات كامل")
 
-            selected_emp = None
-            selected_emp_key = ""
-            if view_mode == "موظف محدد":
-                selected_emp = st.selectbox(
-                    "اختر الموظف",
-                    options=list(options_map.keys()),
-                    index=None,
-                    placeholder="ابحث باسم الموظف...",
-                    key="leave_report_selected_emp"
-                )
-                if selected_emp:
-                    selected_emp_key = str(options_map[selected_emp])
-
-            btn1, btn2 = st.columns(2)
-            with btn1:
-                if view_mode == "موظف محدد":
-                    show_clicked = st.button("📄 عرض إجازات الموظف", use_container_width=True, key="show_emp_leaves_btn")
-                else:
-                    show_clicked = st.button("📋 عرض كل الإجازات", use_container_width=True, key="show_all_leaves_btn")
-            with btn2:
-                clear_clicked = st.button("🧹 مسح العرض", use_container_width=True, key="clear_leave_view_btn")
-
-            if clear_clicked:
-                st.session_state["show_leaves_result"] = False
-                st.session_state["leave_result_df"] = pd.DataFrame()
-                st.rerun()
-
-            if show_clicked:
-                df = load_leaves().copy()
-                if df.empty:
-                    st.session_state["show_leaves_result"] = True
-                    st.session_state["leave_result_df"] = pd.DataFrame()
-                else:
-                    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
-                    df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
-
-                    if view_mode == "موظف محدد":
-                        if not selected_emp:
-                            st.warning("اختر الموظف أولاً")
-                            st.session_state["show_leaves_result"] = False
-                        else:
-                            df = df[df["employee_id"].astype(str).str.strip() == str(selected_emp_key).strip()]
-                            mask = (df["start_date"] <= pd.to_datetime(report_to)) & (df["end_date"] >= pd.to_datetime(report_from))
-                            st.session_state["leave_result_df"] = df[mask].sort_values(["start_date", "end_date"], ascending=[False, False]).copy()
-                            st.session_state["show_leaves_result"] = True
-                    else:
-                        mask = (df["start_date"] <= pd.to_datetime(report_to)) & (df["end_date"] >= pd.to_datetime(report_from))
-                        st.session_state["leave_result_df"] = df[mask].sort_values(["start_date", "end_date"], ascending=[False, False]).copy()
-                        st.session_state["show_leaves_result"] = True
-
-            if st.session_state.get("show_leaves_result", False):
-                res = st.session_state.get("leave_result_df", pd.DataFrame())
-
-                if res is None or res.empty:
-                    st.info("لا توجد إجازات ضمن الشروط المحددة.")
-                else:
-                    st.write(f"عدد السجلات: {len(res)}")
-                    render_leave_results_table(res)
-
-
-                    st.markdown("### إجراءات السجلات")
-                    action_rows = res.reset_index(drop=True)
-                    for idx, r in action_rows.iterrows():
-                        with st.container(border=True):
-                            a1, a2, a3, a4, a5 = st.columns([3, 2, 2, 1, 1])
-
-                            with a1:
-                                st.markdown(f"**{safe_str(r.get('name_ar'))}**")
-                                st.caption(safe_str(r.get("employee_no")))
-
-                            with a2:
-                                st.write(f"📌 {safe_str(r.get('leave_type'))}")
-
-                            with a3:
-                                st.write(f"📅 {fmt_date(r.get('start_date'))} → {fmt_date(r.get('end_date'))}")
-
-                            with a4:
-                                has_attachment = bool(safe_str(r.get("attachment_path", ""))) and os.path.exists(safe_str(r.get("attachment_path", "")))
-                                if has_attachment:
-                                    if st.button("📎", key=f"att_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-                                        st.session_state["open_attachment"] = {
-                                            "path": safe_str(r.get("attachment_path", "")),
-                                            "name": safe_str(r.get("attachment_name", "")),
-                                            "leave_id": safe_str(r.get("leave_id", "")),
-                                        }
-                                        st.rerun()
-                                else:
-                                    st.write("—")
-
-                            with a5:
-                                col_edit, col_del = st.columns(2)
-
-                                # ✏️ تعديل
-                                with col_edit:
-                                    if st.button("✏️", key=f"edit_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-                                        st.session_state["edit_leave_id"] = safe_str(r.get("leave_id"))
-                                        st.rerun()
-
-                                # 🗑️ حذف
-                                with col_del:
-                                    if st.button("🗑️", key=f"del_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
-
-                                        leaves = load_leaves().copy()
-
-                                        target_id = safe_str(r.get("leave_id"))
-
-                                        # 🔥 تأكيد تطابق قوي
-                                        leaves["leave_id"] = leaves["leave_id"].astype(str).str.strip()
-
-                                        # 💾 حفظ السجل قبل الحذف
-                                        deleted_row = leaves[leaves["leave_id"] == target_id]
-                                        if not deleted_row.empty:
-                                            st.session_state["last_deleted_leave"] = deleted_row.iloc[0].to_dict()
-
-                                        # ❌ حذف فعلي
-                                        leaves = leaves[leaves["leave_id"] != target_id]
-
-                                        save_leaves(leaves)
-
-                                        st.success("تم حذف الإجازة")
-                                        st.rerun()
-
-
-
-
-
-                # 🔁 زر التراجع عن الحذف
-                if st.session_state.get("last_deleted_leave"):
-
-                    st.warning("تم حذف سجل. يمكنك التراجع.")
-
-                    if st.button("↩️ التراجع عن آخر حذف", use_container_width=True):
-
-                        leaves = load_leaves().copy()
-
-                        # استرجاع السجل
-                        leaves = pd.concat([
-                            leaves,
-                            pd.DataFrame([st.session_state["last_deleted_leave"]])
-                        ], ignore_index=True)
-
-                        save_leaves(leaves)
-
-                        st.session_state["last_deleted_leave"] = None
-
-                        st.success("تم استرجاع الإجازة بنجاح")
-                        st.rerun()
-                        
-
-                    pdf_bytes = build_leaves_pdf(res)
-                    pdf_name = "leave_report_all.pdf" if view_mode == "كل الموظفين" else f"leave_report_{sanitize_filename(selected_emp_key)}.pdf"
-                    st.download_button(
-                        "📄 تحميل تقرير PDF",
-                        data=pdf_bytes,
-                        file_name=pdf_name,
-                        mime="application/pdf",
-                        use_container_width=True,
-                        key="leave_pdf_download_btn"
-                    )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with edit_tab:
-        st.markdown('<div class="card"><div class="card-title">✏️ تعديل الإجازات</div>', unsafe_allow_html=True)
-
-        if employee_lookup.empty:
-            st.info("ملف الموظفين غير متوفر.")
-        else:
-            options_map = {
-                employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
-                for _, r in employee_lookup.iterrows()
-            }
-
-            hint_text = "اختر موظفًا ثم اختر سجل الإجازة المطلوب تعديله."
-            if st.session_state.get("edit_leave_id"):
-                hint_text = "تم تحميل سجل من شاشة العرض. يمكنك تعديله مباشرة أو اختيار سجل آخر."
-            st.markdown(f'<div class="edit-hint">{hint_text}</div>', unsafe_allow_html=True)
-
-            preselected_emp = None
-            preselected_leave_id = st.session_state.get("edit_leave_id")
-            if preselected_leave_id:
-                all_lv = load_leaves().copy()
-                hit = all_lv[all_lv["leave_id"].astype(str).str.strip() == str(preselected_leave_id).strip()]
-                if not hit.empty:
-                    pre_emp_id = safe_str(hit.iloc[0].get("employee_id"))
-                    for lbl, empkey in options_map.items():
-                        if str(empkey).strip() == pre_emp_id:
-                            preselected_emp = lbl
-                            break
-
-            edit_employee_label = st.selectbox(
-                "الموظف",
-                options=list(options_map.keys()),
-                index=list(options_map.keys()).index(preselected_emp) if preselected_emp in list(options_map.keys()) else None,
-                placeholder="ابحث باسم الموظف...",
-                key="edit_lookup_employee_select"
+            st.caption(
+                "يمكنك رفع ملف Excel يحتوي على عدة إجازات دفعة واحدة."
             )
 
-            employee_leaves = pd.DataFrame()
-            selected_leave_option = None
-            selected_edit_id = None
+            bulk_file = st.file_uploader(
 
-            if edit_employee_label:
-                edit_employee_key = str(options_map[edit_employee_label]).strip()
-                employee_leaves = load_leaves().copy()
-                if not employee_leaves.empty:
-                    employee_leaves["start_date"] = pd.to_datetime(employee_leaves["start_date"], errors="coerce")
-                    employee_leaves["end_date"] = pd.to_datetime(employee_leaves["end_date"], errors="coerce")
-                    employee_leaves = employee_leaves[
-                        employee_leaves["employee_id"].astype(str).str.strip() == edit_employee_key
-                    ].sort_values(["start_date", "end_date"], ascending=[False, False]).copy()
+                "ارفع ملف Excel للإجازات",
 
-                if not employee_leaves.empty:
-                    leave_options = {}
-                    for _, rr in employee_leaves.iterrows():
-                        label = f"{fmt_date(rr.get('start_date'))} → {fmt_date(rr.get('end_date'))} | {safe_str(rr.get('leave_type'))} | {safe_str(rr.get('leave_id'))}"
-                        leave_options[label] = safe_str(rr.get("leave_id"))
+                type=["xlsx"],
 
-                    default_label = None
-                    if preselected_leave_id:
-                        for lbl, lid in leave_options.items():
-                            if str(lid).strip() == str(preselected_leave_id).strip():
-                                default_label = lbl
-                                break
+                key="bulk_leave_upload"
 
-                    selected_leave_option = st.selectbox(
-                        "سجل الإجازة",
-                        options=list(leave_options.keys()),
-                        index=list(leave_options.keys()).index(default_label) if default_label in list(leave_options.keys()) else 0,
-                        key="edit_lookup_leave_select"
-                    )
-                    selected_edit_id = leave_options[selected_leave_option]
+            )
 
-            if selected_edit_id:
-                leaves = load_leaves().copy()
-                leaves["start_date"] = pd.to_datetime(leaves["start_date"], errors="coerce")
-                leaves["end_date"] = pd.to_datetime(leaves["end_date"], errors="coerce")
-                row = leaves[leaves["leave_id"].astype(str).str.strip() == str(selected_edit_id).strip()]
+            if bulk_file:
 
-                if not row.empty:
-                    r = row.iloc[0]
+                try:
 
-                    leave_types = ["سنوية", "مرضية", "بدون راتب", "اضطرارية", "رسمية", "أخرى"]
-                    current_type = safe_str(r.get("leave_type"))
-                    current_index = leave_types.index(current_type) if current_type in leave_types else 0
-
-                    e1, e2 = st.columns(2)
-                    with e1:
-                        st.text_input("الموظف", value=safe_str(r.get("name_ar")), disabled=True, key=f"edit_name_{selected_edit_id}")
-                    with e2:
-                        st.text_input("الرقم الوظيفي", value=safe_str(r.get("employee_no")), disabled=True, key=f"edit_no_{selected_edit_id}")
-
-                    new_type = st.selectbox("نوع الإجازة", leave_types, index=current_index, key=f"edit_type_{selected_edit_id}")
-
-                    d1, d2 = st.columns(2)
-                    with d1:
-                        new_start = st.date_input("من", value=pd.to_datetime(r["start_date"]).date(), key=f"edit_start_{selected_edit_id}")
-                    with d2:
-                        new_end = st.date_input("إلى", value=pd.to_datetime(r["end_date"]).date(), key=f"edit_end_{selected_edit_id}")
-
-                    new_notes = st.text_area("ملاحظات", value=safe_str(r.get("notes")), key=f"edit_notes_{selected_edit_id}")
-                    current_name = safe_str(r.get("attachment_name"))
-                    st.text_input("المرفق الحالي", value=current_name if current_name else "لا يوجد", disabled=True, key=f"edit_current_att_name_{selected_edit_id}")
-
-                    new_file = st.file_uploader(
-                        "استبدال المرفق (اختياري)",
-                        type=["pdf", "png", "jpg", "jpeg", "doc", "docx"],
-                        key=f"edit_file_{selected_edit_id}"
+                    bulk_df = pd.read_excel(
+                        bulk_file
                     )
 
-                    ec1, ec2 = st.columns(2)
-                    with ec1:
-                        if st.button("💾 حفظ التعديل", key=f"save_edit_{selected_edit_id}", use_container_width=True):
-                            if new_end < new_start:
-                                st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
-                            else:
-                                mask = leaves["leave_id"].astype(str).str.strip() == str(selected_edit_id).strip()
-                                leaves.loc[mask, "leave_type"] = new_type
-                                leaves.loc[mask, "start_date"] = pd.Timestamp(new_start)
-                                leaves.loc[mask, "end_date"] = pd.Timestamp(new_end)
-                                leaves.loc[mask, "notes"] = new_notes
+                    required_cols = [
 
-                                if new_file is not None:
-                                    name, path = save_leave_attachment(
-                                        new_file,
-                                        safe_str(r.get("employee_id")),
-                                        new_start,
-                                        new_end
-                                    )
-                                    leaves.loc[mask, "attachment_name"] = name
-                                    leaves.loc[mask, "attachment_path"] = path
+                        "employee_id",
+                        "leave_type",
+                        "start_date",
+                        "end_date"
 
-                                save_leaves(leaves)
-                                st.success("تم تعديل الإجازة بنجاح")
-                                st.session_state["edit_leave_id"] = None
-                                st.rerun()
+                    ]
 
-                    with ec2:
-                        if st.button("❌ إلغاء التحميل", key=f"cancel_edit_{selected_edit_id}", use_container_width=True):
-                            st.session_state["edit_leave_id"] = None
-                            st.rerun()
-                else:
-                    st.warning("لم يتم العثور على سجل الإجازة.")
-            else:
-                st.info("اختر الموظف ثم اختر سجل الإجازة ليظهر نموذج التعديل.")
+                    missing = [
 
-        st.markdown("</div>", unsafe_allow_html=True)
+                        c for c in required_cols
 
-    show_attachment_dialog_if_needed()
+                        if c not in bulk_df.columns
+
+                    ]
+
+                    if missing:
+
+                        st.error(
+                            f"الأعمدة الناقصة: {missing}"
+                        )
+
+                    else:
+
+                        bulk_df["start_date"] = (
+                            pd.to_datetime(
+
+                                bulk_df["start_date"],
+
+                                errors="coerce"
+                            )
+                        )
+
+                        bulk_df["end_date"] = (
+                            pd.to_datetime(
+
+                                bulk_df["end_date"],
+
+                                errors="coerce"
+                            )
+                        )
+
+                        inserted = 0
+
+                        for _, r in bulk_df.iterrows():
+
+                            emp_id = str(
+
+                                r.get(
+                                    "employee_id",
+                                    ""
+                                )
+
+                            ).replace(".0", "").strip()
+
+                            if not emp_id:
+                                continue
+
+                            emp = find_employee_record(
+                                employees_df,
+                                emp_id
+                            )
+
+                            add_leave_record({
+
+                                "leave_id":
+                                    f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+
+                                "employee_id":
+                                    emp_id,
+
+                                "employee_no":
+                                    (
+                                        safe_str(
+                                            emp.get(
+                                                "employee_no"
+                                            )
+                                        )
+                                        if emp
+                                        else emp_id
+                                    ),
+
+                                "name_ar":
+                                    (
+                                        safe_str(
+                                            emp.get(
+                                                "name_ar"
+                                            )
+                                        )
+                                        if emp
+                                        else ""
+                                    ),
+
+                                "name_en":
+                                    (
+                                        safe_str(
+                                            emp.get(
+                                                "name_en"
+                                            )
+                                        )
+                                        if emp
+                                        else ""
+                                    ),
+
+                                "department":
+                                    (
+                                        safe_str(
+                                            emp.get(
+                                                "department"
+                                            )
+                                        )
+                                        if emp
+                                        else ""
+                                    ),
+
+                                "job_title":
+                                    (
+                                        safe_str(
+                                            emp.get(
+                                                "job_title"
+                                            )
+                                        )
+                                        if emp
+                                        else ""
+                                    ),
+
+                                "leave_type":
+                                    str(
+                                        r.get(
+                                            "leave_type",
+                                            "سنوية"
+                                        )
+                                    ),
+
+                                "start_date":
+                                    r.get(
+                                        "start_date"
+                                    ),
+
+                                "end_date":
+                                    r.get(
+                                        "end_date"
+                                    ),
+
+                                "status":
+                                    "معتمدة",
+
+                                "attachment_name":
+                                    "",
+
+                                "attachment_path":
+                                    "",
+
+                                "notes":
+                                    str(
+                                        r.get(
+                                            "notes",
+                                            ""
+                                        )
+                                    ),
+
+                                "created_at":
+                                    pd.Timestamp.now(),
+
+                                "created_by":
+                                    st.session_state.get(
+                                        "login_user"
+                                    ),
+                            })
+
+                            inserted += 1
+
+                        st.success(
+                            f"✅ تم رفع {inserted} إجازة بنجاح"
+                        )
+
+                        st.rerun()
+
+                except Exception as e:
+
+                    st.error(e)
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
 
 
+
+
+
+        
 with main_tab:
     with st.sidebar:
         uploaded_file = st.file_uploader("📄 ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
