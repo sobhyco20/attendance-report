@@ -475,22 +475,73 @@ def load_leaves():
             "leave_id",
             "employee_id",
             "employee_no",
+
             "name_ar",
             "name_en",
+
             "department",
             "job_title",
+
             "leave_type",
+
             "start_date",
             "end_date",
+
             "status",
+
             "attachment_name",
             "attachment_path",
+
             "notes",
+
             "created_at",
             "created_by",
         ])
 
-    for c in ["start_date", "end_date"]:
+    # ====================================
+    # توحيد أنواع البيانات
+    # ====================================
+
+    for c in [
+
+        "employee_id",
+        "employee_no",
+
+        "name_ar",
+        "name_en",
+
+        "department",
+        "job_title",
+
+        "leave_type",
+
+        "status",
+
+        "attachment_name",
+        "attachment_path",
+
+        "notes",
+
+        "created_by"
+
+    ]:
+
+        if c not in df.columns:
+            df[c] = ""
+
+        df[c] = df[c].astype(str)
+
+    # ====================================
+    # التواريخ
+    # ====================================
+
+    for c in [
+
+        "start_date",
+        "end_date",
+        "created_at"
+
+    ]:
 
         if c in df.columns:
 
@@ -2031,7 +2082,7 @@ with leave_root_tab:
 
 
 
-        
+
 with main_tab:
     with st.sidebar:
         uploaded_file = st.file_uploader("📄 ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
