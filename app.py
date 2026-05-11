@@ -334,10 +334,7 @@ EMP_PATH = os.path.join("data", "employees.xlsx")
 FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")
 LOGO_PATH = os.path.join("assets", "logo.png")
 SIDE_IMAGE_PATH = os.path.join("assets", "222003582.jpg")
-LEAVES_PATH = os.path.join("data", "leaves.xlsx")
-LEAVE_ATTACHMENTS_DIR = os.path.join("data", "leave_attachments")
-os.makedirs(os.path.dirname(LEAVES_PATH), exist_ok=True)
-os.makedirs(LEAVE_ATTACHMENTS_DIR, exist_ok=True)
+
 
 
 
@@ -453,15 +450,7 @@ def mm_to_ar_hm(m: int) -> str:
     return f"{sign}{h} ساعة و {mm} دقيقة"
 
 
-def ensure_leaves_file():
-    if not os.path.exists(LEAVES_PATH):
-        cols = [
-            "leave_id", "employee_id", "employee_no", "name_ar", "name_en",
-            "department", "job_title", "leave_type", "start_date", "end_date",
-            "status", "attachment_name", "attachment_path", "notes",
-            "created_at", "created_by",
-        ]
-        pd.DataFrame(columns=cols).to_excel(LEAVES_PATH, index=False)
+
 
 
 def load_leaves():
@@ -490,7 +479,7 @@ def load_leaves():
             "status",
 
             "attachment_name",
-            "attachment_path",
+
 
             "notes",
 
@@ -518,7 +507,7 @@ def load_leaves():
         "status",
 
         "attachment_name",
-        "attachment_path",
+
 
         "notes",
 
@@ -551,14 +540,6 @@ def load_leaves():
             )
 
     return df
-
-def save_leaves(df: pd.DataFrame):
-    ensure_leaves_file()
-    out = df.copy()
-    for c in ["start_date", "end_date"]:
-        if c in out.columns:
-            out[c] = pd.to_datetime(out[c], errors="coerce").dt.date
-    out.to_excel(LEAVES_PATH, index=False)
 
 
 def get_employee_lookup(employees_df: pd.DataFrame | None) -> pd.DataFrame:
@@ -604,18 +585,13 @@ def employee_option_label(row) -> str:
     return f"{safe_str(row.get('name_ar'))} — {safe_str(row.get('employee_no') or row.get('employee_id'))}"
 
 
-def save_leave_attachment(uploaded_file, employee_id: str, start_date, end_date) -> tuple[str, str]:
-    if uploaded_file is None:
-        return "", ""
-    ext = os.path.splitext(uploaded_file.name)[1] or ".bin"
-    fname = f"leave_{sanitize_filename(employee_id)}_{pd.to_datetime(start_date).strftime('%Y%m%d')}_{pd.to_datetime(end_date).strftime('%Y%m%d')}{ext}"
-    path = os.path.join(LEAVE_ATTACHMENTS_DIR, fname)
-    with open(path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    return uploaded_file.name, path
 
+def add_leave_record(
+    record: dict,
+    uploaded_file=None
+):
 
-def add_leave_record(record: dict):
+    record["uploaded_file"] = uploaded_file
 
     insert_leave(record)
 
@@ -1026,19 +1002,23 @@ from reportlab.platypus import Image as RLImage
 # =========================
 # دالة المرفقات (زر فقط)
 # =========================
+from database import get_attachment
+
 def show_leave_attachments(row):
-    path = safe_str(row.get("attachment_path", ""))
-    name = safe_str(row.get("attachment_name", ""))
 
-    if not path or not os.path.exists(path):
-        return "—"
+    leave_id = row.get("leave_id")
 
-    if st.button("📎", key=f"open_att_{row.get('leave_id')}"):
-        st.session_state["open_attachment"] = {
-            "path": path,
-            "name": name
-        }
-        st.rerun()
+    if st.button("📎", key=f"att_{leave_id}"):
+
+        att = get_attachment(leave_id)
+
+        if att and att["data"]:
+
+            st.download_button(
+                "تحميل المرفق",
+                data=att["data"],
+                file_name=att["name"]
+            )
 
     return "📎"
 
@@ -1546,48 +1526,35 @@ def render_leave_results_table(res: pd.DataFrame):
     st.dataframe(table_df, use_container_width=True, hide_index=True)
 
 
-def show_attachment_dialog_if_needed():
-    if st.session_state.get("open_attachment"):
-        att = st.session_state["open_attachment"]
-        path = safe_str(att.get("path", ""))
-        name = safe_str(att.get("name", ""))
+from database import get_attachment
 
-        if path and os.path.exists(path):
-            @st.dialog("📎 عرض المرفق")
-            def open_attachment_dialog():
-                ext = os.path.splitext(path)[1].lower()
+def show_leave_attachments(row):
 
-                if ext in [".png", ".jpg", ".jpeg"]:
-                    st.image(path, caption=name or os.path.basename(path), use_container_width=True)
-                    with open(path, "rb") as f:
-                        st.download_button(
-                            "تحميل الملف",
-                            data=f.read(),
-                            file_name=name or os.path.basename(path),
-                            use_container_width=True,
-                            key=f"dlg_dl_img_{safe_str(att.get('leave_id', ''))}"
-                        )
-                else:
-                    st.info(name or os.path.basename(path))
-                    with open(path, "rb") as f:
-                        st.download_button(
-                            "تحميل الملف",
-                            data=f.read(),
-                            file_name=name or os.path.basename(path),
-                            use_container_width=True,
-                            key=f"dlg_dl_file_{safe_str(att.get('leave_id', ''))}"
-                        )
+    leave_id = row.get("leave_id")
 
-                if st.button("إغلاق", use_container_width=True, key=f"dlg_close_{safe_str(att.get('leave_id', ''))}"):
-                    st.session_state["open_attachment"] = None
-                    st.rerun()
+    if st.button(
 
-            open_attachment_dialog()
-        else:
-            st.session_state["open_attachment"] = None
+        "📎 تحميل",
 
+        key=f"att_{leave_id}"
 
+    ):
 
+        att = get_attachment(leave_id)
+
+        if att and att["data"]:
+
+            st.download_button(
+
+                "⬇️ تحميل المرفق",
+
+                data=att["data"],
+
+                file_name=att["name"],
+
+                key=f"download_{leave_id}"
+
+            )
 
 
 
@@ -1752,103 +1719,98 @@ with leave_root_tab:
 
                     else:
 
-                        attachment_name, attachment_path = (
-                            save_leave_attachment(
-
-                                leave_file,
-
-                                safe_str(
-                                    emp.get(
-                                        "employee_id"
-                                    )
-                                ),
-
-                                leave_start,
-
-                                leave_end
-                            )
+                        attachment_name = (
+                            leave_file.name
+                            if leave_file
+                            else ""
                         )
 
-                        add_leave_record({
+                        attachment_path = ""
 
-                            "leave_id":
-                                f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+                        add_leave_record(
 
-                            "employee_id":
-                                safe_str(
-                                    emp.get(
-                                        "employee_id"
-                                    )
-                                ).replace(".0", "").strip(),
+                            {
 
-                            "employee_no":
-                                safe_str(
-                                    emp.get(
-                                        "employee_no"
-                                    )
-                                ),
+                                "leave_id":
+                                    f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
 
-                            "name_ar":
-                                safe_str(
-                                    emp.get(
-                                        "name_ar"
-                                    )
-                                ),
+                                "employee_id":
+                                    safe_str(
+                                        emp.get(
+                                            "employee_id"
+                                        )
+                                    ).replace(".0", "").strip(),
 
-                            "name_en":
-                                safe_str(
-                                    emp.get(
-                                        "name_en"
-                                    )
-                                ),
+                                "employee_no":
+                                    safe_str(
+                                        emp.get(
+                                            "employee_no"
+                                        )
+                                    ),
 
-                            "department":
-                                safe_str(
-                                    emp.get(
-                                        "department"
-                                    )
-                                ),
+                                "name_ar":
+                                    safe_str(
+                                        emp.get(
+                                            "name_ar"
+                                        )
+                                    ),
 
-                            "job_title":
-                                safe_str(
-                                    emp.get(
-                                        "job_title"
-                                    )
-                                ),
+                                "name_en":
+                                    safe_str(
+                                        emp.get(
+                                            "name_en"
+                                        )
+                                    ),
 
-                            "leave_type":
-                                leave_type,
+                                "department":
+                                    safe_str(
+                                        emp.get(
+                                            "department"
+                                        )
+                                    ),
 
-                            "start_date":
-                                pd.Timestamp(
-                                    leave_start
-                                ),
+                                "job_title":
+                                    safe_str(
+                                        emp.get(
+                                            "job_title"
+                                        )
+                                    ),
 
-                            "end_date":
-                                pd.Timestamp(
-                                    leave_end
-                                ),
+                                "leave_type":
+                                    leave_type,
 
-                            "status":
-                                "معتمدة",
+                                "start_date":
+                                    pd.Timestamp(
+                                        leave_start
+                                    ),
 
-                            "attachment_name":
-                                attachment_name,
+                                "end_date":
+                                    pd.Timestamp(
+                                        leave_end
+                                    ),
 
-                            "attachment_path":
-                                attachment_path,
+                                "status":
+                                    "معتمدة",
 
-                            "notes":
-                                notes,
+                                "attachment_name":
+                                    leave_file.name if leave_file else "",
 
-                            "created_at":
-                                pd.Timestamp.now(),
+                                "notes":
+                                    notes,
 
-                            "created_by":
-                                st.session_state.get(
-                                    "login_user"
-                                ),
-                        })
+                                "created_at":
+                                    pd.Timestamp.now(),
+
+                                "created_by":
+                                    st.session_state.get(
+                                        "login_user"
+                                    ),
+
+                            },
+
+                            uploaded_file=leave_file
+
+                        )
 
                         st.success(
                             "✅ تم حفظ الإجازة بنجاح"
@@ -1954,113 +1916,114 @@ with leave_root_tab:
                                 emp_id
                             )
 
-                            add_leave_record({
+                            add_leave_record(
 
-                                "leave_id":
-                                    f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+                                {
 
-                                "employee_id":
-                                    emp_id,
+                                    "leave_id":
+                                        f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
 
-                                "employee_no":
-                                    (
-                                        safe_str(
-                                            emp.get(
-                                                "employee_no"
+                                    "employee_id":
+                                        emp_id,
+
+                                    "employee_no":
+                                        (
+                                            safe_str(
+                                                emp.get(
+                                                    "employee_no"
+                                                )
                                             )
-                                        )
-                                        if emp
-                                        else emp_id
-                                    ),
+                                            if emp
+                                            else emp_id
+                                        ),
 
-                                "name_ar":
-                                    (
-                                        safe_str(
-                                            emp.get(
-                                                "name_ar"
+                                    "name_ar":
+                                        (
+                                            safe_str(
+                                                emp.get(
+                                                    "name_ar"
+                                                )
                                             )
-                                        )
-                                        if emp
-                                        else ""
-                                    ),
+                                            if emp
+                                            else ""
+                                        ),
 
-                                "name_en":
-                                    (
-                                        safe_str(
-                                            emp.get(
-                                                "name_en"
+                                    "name_en":
+                                        (
+                                            safe_str(
+                                                emp.get(
+                                                    "name_en"
+                                                )
                                             )
-                                        )
-                                        if emp
-                                        else ""
-                                    ),
+                                            if emp
+                                            else ""
+                                        ),
 
-                                "department":
-                                    (
-                                        safe_str(
-                                            emp.get(
-                                                "department"
+                                    "department":
+                                        (
+                                            safe_str(
+                                                emp.get(
+                                                    "department"
+                                                )
                                             )
-                                        )
-                                        if emp
-                                        else ""
-                                    ),
+                                            if emp
+                                            else ""
+                                        ),
 
-                                "job_title":
-                                    (
-                                        safe_str(
-                                            emp.get(
-                                                "job_title"
+                                    "job_title":
+                                        (
+                                            safe_str(
+                                                emp.get(
+                                                    "job_title"
+                                                )
                                             )
-                                        )
-                                        if emp
-                                        else ""
-                                    ),
+                                            if emp
+                                            else ""
+                                        ),
 
-                                "leave_type":
-                                    str(
+                                    "leave_type":
+                                        str(
+                                            r.get(
+                                                "leave_type",
+                                                "سنوية"
+                                            )
+                                        ),
+
+                                    "start_date":
                                         r.get(
-                                            "leave_type",
-                                            "سنوية"
-                                        )
-                                    ),
+                                            "start_date"
+                                        ),
 
-                                "start_date":
-                                    r.get(
-                                        "start_date"
-                                    ),
-
-                                "end_date":
-                                    r.get(
-                                        "end_date"
-                                    ),
-
-                                "status":
-                                    "معتمدة",
-
-                                "attachment_name":
-                                    "",
-
-                                "attachment_path":
-                                    "",
-
-                                "notes":
-                                    str(
+                                    "end_date":
                                         r.get(
-                                            "notes",
-                                            ""
-                                        )
-                                    ),
+                                            "end_date"
+                                        ),
 
-                                "created_at":
-                                    pd.Timestamp.now(),
+                                    "status":
+                                        "معتمدة",
 
-                                "created_by":
-                                    st.session_state.get(
-                                        "login_user"
-                                    ),
-                            })
+                                    "attachment_name":
+                                        "",
 
+                                    "notes":
+                                        str(
+                                            r.get(
+                                                "notes",
+                                                ""
+                                            )
+                                        ),
+
+                                    "created_at":
+                                        pd.Timestamp.now(),
+
+                                    "created_by":
+                                        st.session_state.get(
+                                            "login_user"
+                                        ),
+
+                                }
+
+                            )
                             inserted += 1
 
                         st.success(
