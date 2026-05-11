@@ -320,8 +320,7 @@ def process_attendance(
         else:
             attendance_rule = ""
 
-        has_sat_presence = (emp_df["weekday"] == "Saturday").any()
-        saturday_is_workday = (not is_saudi) and has_sat_presence
+        saturday_is_workday = not is_saudi
         schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
         SATURDAY_REQUIRED_HOURS = 3
         SATURDAY_REQUIRED_MINUTES = SATURDAY_REQUIRED_HOURS * 60
