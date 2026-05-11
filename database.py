@@ -1,110 +1,231 @@
+# =========================
+# database.py
+# =========================
+
 import sqlite3
 import pandas as pd
+from datetime import datetime
 
-DB_PATH = "attendance.db"
+DB_NAME = "attendance.db"
 
-conn = sqlite3.connect(
-    DB_PATH,
-    check_same_thread=False
-)
 
-cursor = conn.cursor()
+# =========================
+# الاتصال
+# =========================
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS leaves (
+def get_connection():
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-    leave_id TEXT PRIMARY KEY,
 
-    employee_id TEXT,
-    employee_no TEXT,
+# =========================
+# إنشاء الجداول
+# =========================
 
-    name_ar TEXT,
-    name_en TEXT,
+def init_db():
 
-    department TEXT,
-    job_title TEXT,
+    conn = get_connection()
+    cur = conn.cursor()
 
-    leave_type TEXT,
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS leaves (
 
-    start_date TEXT,
-    end_date TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    status TEXT,
+        leave_id TEXT,
+        employee_id TEXT,
+        employee_no TEXT,
 
-    attachment_name TEXT,
-    attachment_path TEXT,
+        name_ar TEXT,
+        name_en TEXT,
 
-    notes TEXT,
+        department TEXT,
+        job_title TEXT,
 
-    created_at TEXT,
-    created_by TEXT
-)
-""")
+        leave_type TEXT,
 
-conn.commit()
+        start_date TEXT,
+        end_date TEXT,
 
+        status TEXT,
+
+        attachment_name TEXT,
+        attachment_data BLOB,
+
+        notes TEXT,
+
+        created_at TEXT,
+        created_by TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# =========================
+# تحميل الإجازات
+# =========================
 
 def load_leaves_db():
 
-    try:
-        df = pd.read_sql(
-            "SELECT * FROM leaves",
-            conn
-        )
+    init_db()
 
-        return df
+    conn = get_connection()
 
-    except Exception:
-        return pd.DataFrame()
+    df = pd.read_sql_query(
+        "SELECT * FROM leaves",
+        conn
+    )
 
+    conn.close()
+
+    return df
+
+
+# =========================
+# إضافة إجازة
+# =========================
 
 def insert_leave(record):
 
-    cursor.execute("""
+    init_db()
 
-    INSERT OR REPLACE INTO leaves VALUES (
+    conn = get_connection()
+    cur = conn.cursor()
 
-        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+    attachment_name = ""
+    attachment_data = None
+
+    uploaded_file = record.get("uploaded_file")
+
+    if uploaded_file is not None:
+
+        attachment_name = uploaded_file.name
+        attachment_data = uploaded_file.getvalue()
+
+    cur.execute("""
+    INSERT INTO leaves (
+
+        leave_id,
+        employee_id,
+        employee_no,
+
+        name_ar,
+        name_en,
+
+        department,
+        job_title,
+
+        leave_type,
+
+        start_date,
+        end_date,
+
+        status,
+
+        attachment_name,
+        attachment_data,
+
+        notes,
+
+        created_at,
+        created_by
 
     )
 
+    VALUES (
+
+        ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?
+
+    )
     """, (
 
-        record["leave_id"],
+        record.get("leave_id"),
+        record.get("employee_id"),
+        record.get("employee_no"),
 
-        record["employee_id"],
-        record["employee_no"],
+        record.get("name_ar"),
+        record.get("name_en"),
 
-        record["name_ar"],
-        record["name_en"],
+        record.get("department"),
+        record.get("job_title"),
 
-        record["department"],
-        record["job_title"],
+        record.get("leave_type"),
 
-        record["leave_type"],
+        str(record.get("start_date")),
+        str(record.get("end_date")),
 
-        str(record["start_date"]),
-        str(record["end_date"]),
+        record.get("status"),
 
-        record["status"],
+        attachment_name,
+        attachment_data,
 
-        record["attachment_name"],
-        record["attachment_path"],
+        record.get("notes"),
 
-        record["notes"],
+        str(datetime.now()),
+        record.get("created_by")
 
-        str(record["created_at"]),
-        record["created_by"],
     ))
 
     conn.commit()
+    conn.close()
 
+
+# =========================
+# حذف إجازة
+# =========================
 
 def delete_leave(leave_id):
 
-    cursor.execute(
+    conn = get_connection()
+
+    cur = conn.cursor()
+
+    cur.execute(
         "DELETE FROM leaves WHERE leave_id=?",
         (leave_id,)
     )
 
     conn.commit()
+    conn.close()
+
+
+# =========================
+# تحميل مرفق
+# =========================
+
+def get_attachment(leave_id):
+
+    conn = get_connection()
+
+    cur = conn.cursor()
+
+    cur.execute("""
+
+        SELECT attachment_name,
+               attachment_data
+
+        FROM leaves
+
+        WHERE leave_id=?
+
+    """, (leave_id,))
+
+    row = cur.fetchone()
+
+    conn.close()
+
+    if row:
+        return {
+            "name": row["attachment_name"],
+            "data": row["attachment_data"]
+        }
+
+    return None
