@@ -315,150 +315,453 @@ def process_attendance(
 
         attendance_rule = pick_first(emp_df.get("attendance_calculation"), "")
         attendance_rule = _norm_str(attendance_rule).lower()
-        if attendance_rule in ["daily hours", "daily_hours", "hours", "exempt", "مستثنى", "استثناء"]:
+
+        if attendance_rule in [
+            "daily hours",
+            "daily_hours",
+            "hours",
+            "exempt",
+            "مستثنى",
+            "استثناء"
+        ]:
+
             attendance_rule = "daily_hours"
+
         else:
+
             attendance_rule = ""
 
-        saturday_is_workday = not is_saudi
-        schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
-        SATURDAY_REQUIRED_HOURS = 3
-        SATURDAY_REQUIRED_MINUTES = SATURDAY_REQUIRED_HOURS * 60
+        # =====================================================
+        # غير السعودي يعمل السبت
+        # =====================================================
 
-        def is_workday(day_name: str, date_val=None) -> bool:
+        saturday_is_workday = not is_saudi
+
+        schedule = (
+            "الجمعة فقط"
+            if saturday_is_workday
+            else "الجمعة والسبت"
+        )
+
+        # =====================================================
+        # دوام السبت
+        # =====================================================
+
+        SATURDAY_REQUIRED_HOURS = 3
+
+        SATURDAY_REQUIRED_MINUTES = (
+            SATURDAY_REQUIRED_HOURS * 60
+        )
+
+        # =====================================================
+        # تحديد أيام العمل
+        # =====================================================
+
+        def is_workday(
+            day_name: str,
+            date_val=None
+        ) -> bool:
+
             if _is_eid_holiday(date_val):
+
                 return False
+
             if day_name == "Friday":
+
                 return False
+
             if day_name == "Saturday":
+
                 return saturday_is_workday
+
             return True
 
-        emp_df["is_workday"] = emp_df.apply(lambda r: is_workday(r["weekday"], r["date"]), axis=1)
+        emp_df["is_workday"] = emp_df.apply(
+
+            lambda r: is_workday(
+                r["weekday"],
+                r["date"]
+            ),
+
+            axis=1
+
+        )
 
         any_date = emp_df["date"].dropna().iloc[0]
+
         start_date = any_date.replace(day=8)
+
         if any_date.day < 8:
-            start_date = (start_date - pd.DateOffset(months=1))
-        end_date = start_date + pd.DateOffset(months=1) - pd.DateOffset(days=1)
+
+            start_date = (
+                start_date
+                -
+                pd.DateOffset(months=1)
+            )
+
+        end_date = (
+            start_date
+            +
+            pd.DateOffset(months=1)
+            -
+            pd.DateOffset(days=1)
+        )
 
         date_min = start_date
         date_max = end_date
+
         if pd.isna(date_min) or pd.isna(date_max):
+
             continue
 
-        date_range = pd.date_range(date_min.normalize(), date_max.normalize(), freq="D")
-        expected_days = [d for d in date_range if is_workday(d.day_name(), d)]
-        present_days = set(emp_df["date"].dt.date.dropna().unique())
+        date_range = pd.date_range(
 
-        emp_leaves = pd.DataFrame()
-        leave_dates = set()
-        if not leaves_df.empty:
-            emp_leaves = leaves_df[leaves_df["employee_id"] == emp_id].copy()
-            if not emp_leaves.empty:
-                emp_leaves = emp_leaves[(emp_leaves["end_date"] >= date_min.normalize()) & (emp_leaves["start_date"] <= date_max.normalize())].copy()
-                for _, lv in emp_leaves.iterrows():
-                    overlap_start = max(lv["start_date"], date_min.normalize())
-                    overlap_end = min(lv["end_date"], date_max.normalize())
-                    for d in pd.date_range(overlap_start, overlap_end, freq="D"):
-                        if is_workday(d.day_name(), d):
-                            leave_dates.add(d.date())
-                            leave_details.append(
-                                {
-                                    "employee_id": emp_id,
-                                    "employee_no": emp_no,
-                                    "name_ar": name_ar,
-                                    "name_en": name_en,
-                                    "job_title": emp_job,
-                                    "nationality": emp_nat,
-                                    "department": emp_dept,
-                                    "date": d.date(),
-                                    "weekday": d.day_name(),
-                                    "weekday_ar": weekday_ar(d.day_name()),
-                                    "schedule": schedule,
-                                    "attendance_calculation": attendance_rule,
-                                    "leave_type": lv.get("leave_type", "إجازة"),
-                                    "status": lv.get("status", "معتمدة"),
-                                    "attachment_name": lv.get("attachment_name", ""),
-                                    "attachment_path": lv.get("attachment_path", ""),
-                                    "notes": lv.get("notes", ""),
-                                    "leave_start": lv.get("start_date"),
-                                    "leave_end": lv.get("end_date"),
-                                }
-                            )
+            date_min.normalize(),
+            date_max.normalize(),
+            freq="D"
 
-        absent_days = [d for d in expected_days if d.date() not in present_days and d.date() not in leave_dates]
+        )
 
-        for d in absent_days:
-            absence_details.append(
-                {
-                    "employee_id": emp_id,
-                    "employee_no": emp_no,
-                    "name_ar": name_ar,
-                    "name_en": name_en,
-                    "job_title": emp_job,
-                    "nationality": emp_nat,
-                    "department": emp_dept,
-                    "date": d.date(),
-                    "weekday": d.day_name(),
-                    "weekday_ar": weekday_ar(d.day_name()),
-                    "schedule": schedule,
-                    "attendance_calculation": attendance_rule,
-                }
+        expected_days = [
+
+            d for d in date_range
+
+            if is_workday(
+                d.day_name(),
+                d
             )
 
-        emp_df["first_td"] = emp_df["first_punch_time"].apply(time_to_td)
-        emp_df["last_td"] = emp_df["last_punch_time"].apply(time_to_td)
+        ]
+
+        present_days = set(
+
+            emp_df["date"]
+            .dt.date
+            .dropna()
+            .unique()
+
+        )
+
+        emp_leaves = pd.DataFrame()
+
+        leave_dates = set()
+
+        if not leaves_df.empty:
+
+            emp_leaves = leaves_df[
+
+                leaves_df["employee_id"] == emp_id
+
+            ].copy()
+
+            if not emp_leaves.empty:
+
+                emp_leaves = emp_leaves[
+
+                    (
+                        emp_leaves["end_date"]
+                        >=
+                        date_min.normalize()
+                    )
+
+                    &
+
+                    (
+                        emp_leaves["start_date"]
+                        <=
+                        date_max.normalize()
+                    )
+
+                ].copy()
+
+                for _, lv in emp_leaves.iterrows():
+
+                    overlap_start = max(
+
+                        lv["start_date"],
+                        date_min.normalize()
+
+                    )
+
+                    overlap_end = min(
+
+                        lv["end_date"],
+                        date_max.normalize()
+
+                    )
+
+                    for d in pd.date_range(
+
+                        overlap_start,
+                        overlap_end,
+                        freq="D"
+
+                    ):
+
+                        if is_workday(
+                            d.day_name(),
+                            d
+                        ):
+
+                            leave_dates.add(d.date())
+
+                            leave_details.append(
+
+                                {
+
+                                    "employee_id": emp_id,
+
+                                    "employee_no": emp_no,
+
+                                    "name_ar": name_ar,
+
+                                    "name_en": name_en,
+
+                                    "job_title": emp_job,
+
+                                    "nationality": emp_nat,
+
+                                    "department": emp_dept,
+
+                                    "date": d.date(),
+
+                                    "weekday": d.day_name(),
+
+                                    "weekday_ar":
+                                        weekday_ar(
+                                            d.day_name()
+                                        ),
+
+                                    "schedule": schedule,
+
+                                    "attendance_calculation":
+                                        attendance_rule,
+
+                                    "leave_type":
+                                        lv.get(
+                                            "leave_type",
+                                            "إجازة"
+                                        ),
+
+                                    "status":
+                                        lv.get(
+                                            "status",
+                                            "معتمدة"
+                                        ),
+
+                                    "attachment_name":
+                                        lv.get(
+                                            "attachment_name",
+                                            ""
+                                        ),
+
+                                    "attachment_path":
+                                        lv.get(
+                                            "attachment_path",
+                                            ""
+                                        ),
+
+                                    "notes":
+                                        lv.get(
+                                            "notes",
+                                            ""
+                                        ),
+
+                                    "leave_start":
+                                        lv.get(
+                                            "start_date"
+                                        ),
+
+                                    "leave_end":
+                                        lv.get(
+                                            "end_date"
+                                        ),
+
+                                }
+
+                            )
+
+        absent_days = [
+
+            d for d in expected_days
+
+            if d.date() not in present_days
+
+            and
+
+            d.date() not in leave_dates
+
+        ]
+
+        for d in absent_days:
+
+            absence_details.append(
+
+                {
+
+                    "employee_id": emp_id,
+
+                    "employee_no": emp_no,
+
+                    "name_ar": name_ar,
+
+                    "name_en": name_en,
+
+                    "job_title": emp_job,
+
+                    "nationality": emp_nat,
+
+                    "department": emp_dept,
+
+                    "date": d.date(),
+
+                    "weekday": d.day_name(),
+
+                    "weekday_ar":
+                        weekday_ar(
+                            d.day_name()
+                        ),
+
+                    "schedule": schedule,
+
+                    "attendance_calculation":
+                        attendance_rule,
+
+                }
+
+            )
+
+        emp_df["first_td"] = emp_df[
+            "first_punch_time"
+        ].apply(time_to_td)
+
+        emp_df["last_td"] = emp_df[
+            "last_punch_time"
+        ].apply(time_to_td)
+
+        # =====================================================
+        # حذف الصفوف الفارغة
+        # =====================================================
+
+        emp_df = emp_df[
+
+            ~(
+                emp_df["first_td"].isna()
+                &
+                emp_df["last_td"].isna()
+            )
+
+        ]
 
         if attendance_rule != "daily_hours":
+
             def calc_late(row):
+
                 first = row.get("first_td")
 
-                # 🔥 أهم سطر (يحل المشكلة)
                 if first is None or pd.isna(first):
+
                     return 0
 
                 try:
-                    _, late_limit_day, _ = shift_params_for_date(row.get("date"))
+
+                    _, late_limit_day, _ = (
+                        shift_params_for_date(
+                            row.get("date")
+                        )
+                    )
 
                     if first <= late_limit_day:
+
                         return 0
 
-                    return int((first - late_limit_day).total_seconds() // 60)
+                    return int(
+
+                        (
+                            first
+                            -
+                            late_limit_day
+                        ).total_seconds()
+
+                        // 60
+
+                    )
 
                 except Exception:
+
                     return 0
 
             def calc_early_leave(row):
+
                 last = row.get("last_td")
 
                 if last is None or pd.isna(last):
+
                     return 0
 
                 try:
-                    _, _, end_td_day = shift_params_for_date(row.get("date"))
+
+                    _, _, end_td_day = (
+
+                        shift_params_for_date(
+                            row.get("date")
+                        )
+
+                    )
+
+                    # =====================================
+                    # السبت = 3 ساعات لغير السعوديين
+                    # =====================================
 
                     if (
-                        row.get("weekday") == "Saturday"
+
+                        row.get("weekday")
+                        ==
+                        "Saturday"
+
                         and
+
                         not is_saudi
+
                     ):
-                    
+
                         first_td = row.get("first_td")
-                    
+
                         if first_td is not None:
-                    
+
                             end_td_day = (
+
                                 first_td
+
                                 +
-                                dt.timedelta(hours=3)
+
+                                dt.timedelta(
+
+                                    minutes=
+                                    SATURDAY_REQUIRED_MINUTES
+
+                                )
+
                             )
+
                     if last >= end_td_day:
+
                         return 0
 
-                    return int((end_td_day - last).total_seconds() // 60)
+                    return int(
+
+                        (
+                            end_td_day
+                            -
+                            last
+                        ).total_seconds()
+
+                        // 60
+
+                    )
 
                 except Exception:
+
                     return 0
 
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
