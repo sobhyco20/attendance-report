@@ -60,7 +60,11 @@ def init_db():
     )
     """)
 
+  
     conn.commit()
+
+    migrate_db()
+
     conn.close()
 
 
