@@ -654,116 +654,143 @@ def process_attendance(
         ]
 
         if attendance_rule != "daily_hours":
-
+            
             def calc_late(row):
-
+            
                 first = row.get("first_td")
-
+            
                 if first is None or pd.isna(first):
-
+            
                     return 0
-
+            
                 try:
-
+            
+                    # =====================================
+                    # السبت لغير السعودي = بدون تأخير
+                    # =====================================
+            
+                    if (
+            
+                        row.get("weekday") == "Saturday"
+            
+                        and
+            
+                        not is_saudi
+            
+                    ):
+            
+                        return 0
+            
                     _, late_limit_day, _ = (
                         shift_params_for_date(
                             row.get("date")
                         )
                     )
-
+            
                     if first <= late_limit_day:
-
+            
                         return 0
-
+            
                     return int(
-
+            
                         (
                             first
                             -
                             late_limit_day
                         ).total_seconds()
-
+            
                         // 60
-
+            
                     )
-
+            
                 except Exception:
-
+            
                     return 0
 
+            
             def calc_early_leave(row):
-
+            
                 last = row.get("last_td")
-
+            
                 if last is None or pd.isna(last):
-
+            
                     return 0
-
+            
                 try:
-
+            
+                    # =====================================
+                    # السبت لغير السعوديين
+                    # المطلوب فقط 3 ساعات
+                    # =====================================
+            
+                    if (
+            
+                        row.get("weekday") == "Saturday"
+            
+                        and
+            
+                        not is_saudi
+            
+                    ):
+            
+                        first_td = row.get("first_td")
+            
+                        if first_td is None:
+            
+                            return SATURDAY_REQUIRED_MINUTES
+            
+                        worked_minutes = int(
+            
+                            (
+                                last - first_td
+                            ).total_seconds()
+            
+                            // 60
+            
+                        )
+            
+                        if worked_minutes >= SATURDAY_REQUIRED_MINUTES:
+            
+                            return 0
+            
+                        return (
+            
+                            SATURDAY_REQUIRED_MINUTES
+                            -
+                            worked_minutes
+            
+                        )
+            
+                    # =====================================
+                    # الأيام العادية
+                    # =====================================
+            
                     _, _, end_td_day = (
-
                         shift_params_for_date(
                             row.get("date")
                         )
-
                     )
-
-                    # =====================================
-                    # السبت = 3 ساعات لغير السعوديين
-                    # =====================================
-
-                    if (
-
-                        row.get("weekday")
-                        ==
-                        "Saturday"
-
-                        and
-
-                        not is_saudi
-
-                    ):
-
-                        first_td = row.get("first_td")
-
-                        if first_td is not None:
-
-                            end_td_day = (
-
-                                first_td
-
-                                +
-
-                                dt.timedelta(
-
-                                    minutes=
-                                    SATURDAY_REQUIRED_MINUTES
-
-                                )
-
-                            )
-
+            
                     if last >= end_td_day:
-
+            
                         return 0
-
+            
                     return int(
-
+            
                         (
                             end_td_day
                             -
                             last
                         ).total_seconds()
-
+            
                         // 60
-
+            
                     )
-
+            
                 except Exception:
-
+            
                     return 0
-
+                    
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
             emp_df["early_leave_minutes"] = emp_df.apply(calc_early_leave, axis=1)
 
