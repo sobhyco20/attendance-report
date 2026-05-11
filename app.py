@@ -37,11 +37,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 
 
-import os
 
-if os.path.exists("attendance.db"):
-
-    os.remove("attendance.db")
     
 # =========================
 # إعدادات الصفحة
