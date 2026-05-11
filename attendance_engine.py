@@ -886,6 +886,47 @@ def process_attendance(
                         delta = lo - fi
                         worked_minutes = max(0, int(delta.total_seconds() // 60))
 
+                    # =========================================
+                    # السبت لغير السعوديين
+                    # =========================================
+                    
+                    if (
+                    
+                        row["weekday"] == "Saturday"
+                    
+                        and
+                    
+                        not is_saudi
+                    
+                    ):
+                    
+                        late_m = 0
+                    
+                        if worked_minutes < SATURDAY_REQUIRED_MINUTES:
+                    
+                            early_leave_m = (
+                    
+                                SATURDAY_REQUIRED_MINUTES
+                                -
+                                worked_minutes
+                    
+                            )
+                    
+                            overtime_m = 0
+                    
+                        else:
+                    
+                            early_leave_m = 0
+                    
+                            overtime_m = (
+                    
+                                worked_minutes
+                                -
+                                SATURDAY_REQUIRED_MINUTES
+                    
+                            )
+
+                    
                     _, late_limit_day, end_td_day = shift_params_for_date(row.get("date_only"))
 
                     if row["first_td"] is None:
