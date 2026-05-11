@@ -1953,6 +1953,306 @@ with leave_root_tab:
             unsafe_allow_html=True
         )
 
+    # =========================================================
+    # عرض الإجازات
+    # =========================================================
+
+    with view_tab:
+
+        st.markdown("## 📊 عرض الإجازات")
+
+        leaves_df = load_leaves()
+
+        if leaves_df.empty:
+
+            st.warning("لا توجد إجازات مسجلة")
+
+        else:
+
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+
+                search_emp = st.text_input(
+                    "بحث باسم الموظف"
+                )
+
+            with c2:
+
+                from_date = st.date_input(
+                    "من تاريخ",
+                    value=None
+                )
+
+            with c3:
+
+                to_date = st.date_input(
+                    "إلى تاريخ",
+                    value=None
+                )
+
+            result = leaves_df.copy()
+
+            # =====================================
+            # فلترة الموظف
+            # =====================================
+
+            if search_emp:
+
+                result = result[
+
+                    result["name_ar"]
+
+                    .astype(str)
+
+                    .str.contains(
+
+                        search_emp,
+
+                        case=False,
+
+                        na=False
+
+                    )
+
+                ]
+
+            # =====================================
+            # فلترة التواريخ
+            # =====================================
+
+            if from_date:
+
+                result = result[
+
+                    pd.to_datetime(
+
+                        result["start_date"]
+
+                    ) >= pd.Timestamp(from_date)
+
+                ]
+
+            if to_date:
+
+                result = result[
+
+                    pd.to_datetime(
+
+                        result["end_date"]
+
+                    ) <= pd.Timestamp(to_date)
+
+                ]
+
+            # =====================================
+            # عرض الجدول
+            # =====================================
+
+            render_leave_results_table(result)
+
+            st.markdown("### 📎 المرفقات")
+
+            for _, row in result.iterrows():
+
+                if safe_str(
+                    row.get("attachment_name")
+                ):
+
+                    c1, c2 = st.columns([8, 2])
+
+                    with c1:
+
+                        st.write(
+
+                            f"{safe_str(row.get('name_ar'))}"
+                            f" - "
+                            f"{safe_str(row.get('leave_type'))}"
+
+                        )
+
+                    with c2:
+
+                        show_leave_attachments(row)
+
+            # =====================================
+            # PDF
+            # =====================================
+
+            pdf_bytes = build_leaves_pdf(result)
+
+            st.download_button(
+
+                "⬇️ تحميل PDF",
+
+                data=pdf_bytes,
+
+                file_name="leaves_report.pdf",
+
+                mime="application/pdf"
+
+            )
+
+
+    # =========================================================
+    # تعديل الإجازات
+    # =========================================================
+
+    with edit_tab:
+
+        st.markdown("## ✏️ تعديل الإجازات")
+
+        leaves_df = load_leaves()
+
+        if leaves_df.empty:
+
+            st.warning(
+                "لا توجد إجازات للتعديل"
+            )
+
+        else:
+
+            options = {
+
+                f"{safe_str(r.get('name_ar'))}"
+                f" | "
+                f"{fmt_date(r.get('start_date'))}"
+                f" → "
+                f"{fmt_date(r.get('end_date'))}":
+
+                r.get("leave_id")
+
+                for _, r in leaves_df.iterrows()
+
+            }
+
+            selected = st.selectbox(
+
+                "اختر الإجازة",
+
+                list(options.keys())
+
+            )
+
+            leave_id = options[selected]
+
+            row = leaves_df[
+
+                leaves_df["leave_id"] == leave_id
+
+            ].iloc[0]
+
+            new_leave_type = st.selectbox(
+
+                "نوع الإجازة",
+
+                [
+                    "سنوية",
+                    "مرضية",
+                    "بدون راتب",
+                    "اضطرارية",
+                    "رسمية",
+                    "أخرى"
+                ],
+
+                index=0
+
+            )
+
+            new_start = st.date_input(
+
+                "من تاريخ",
+
+                value=pd.to_datetime(
+                    row["start_date"]
+                )
+
+            )
+
+            new_end = st.date_input(
+
+                "إلى تاريخ",
+
+                value=pd.to_datetime(
+                    row["end_date"]
+                )
+
+            )
+
+            new_notes = st.text_area(
+
+                "ملاحظات",
+
+                value=safe_str(
+                    row.get("notes")
+                )
+
+            )
+
+            c1, c2 = st.columns(2)
+
+            # =====================================
+            # حفظ التعديل
+            # =====================================
+
+            with c1:
+
+                if st.button("💾 حفظ التعديل"):
+
+                    from database import update_leave
+
+                    update_leave(
+
+                        leave_id,
+
+                        {
+
+                            "leave_type":
+                                new_leave_type,
+
+                            "start_date":
+                                pd.Timestamp(
+                                    new_start
+                                ),
+
+                            "end_date":
+                                pd.Timestamp(
+                                    new_end
+                                ),
+
+                            "notes":
+                                new_notes,
+
+                            "status":
+                                "معتمدة",
+
+                        }
+
+                    )
+
+                    st.success(
+                        "✅ تم تعديل الإجازة"
+                    )
+
+                    st.rerun()
+
+            # =====================================
+            # حذف
+            # =====================================
+
+            with c2:
+
+                if st.button("🗑️ حذف الإجازة"):
+
+                    delete_leave(leave_id)
+
+                    st.success(
+                        "✅ تم حذف الإجازة"
+                    )
+
+                    st.rerun()
+
+
 
 
 
