@@ -1000,93 +1000,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
 
 
 
-from reportlab.platypus import Image as RLImage
-
-# =========================
-# دالة المرفقات (زر فقط)
-# =========================
-from database import get_attachment
-
-def show_leave_attachments(row):
-
-    leave_id = row.get("leave_id")
-
-    if st.button("📎", key=f"att_{leave_id}"):
-
-        att = get_attachment(leave_id)
-
-        if att and att["data"]:
-
-            st.download_button(
-                "تحميل المرفق",
-                data=att["data"],
-                file_name=att["name"]
-            )
-
-    return "📎"
-
-
-
-# =========================
-# PDF (بدون عرض مرفقات)
-# =========================
-def build_leaves_pdf(leaves_df):
-    buf = BytesIO()
-
-    FONT_PATH = os.path.join("fonts", "Amiri-Regular.ttf")
-    FONT_NAME = "AR"
-    pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
-
-    doc = SimpleDocTemplate(buf, pagesize=A4)
-    styles = getSampleStyleSheet()
-
-    normal_style = ParagraphStyle(
-        "arabic_normal",
-        parent=styles["Normal"],
-        fontName=FONT_NAME,
-        fontSize=12,
-        alignment=2,
-    )
-
-    title_style = ParagraphStyle(
-        "arabic_title",
-        parent=styles["Heading2"],
-        fontName=FONT_NAME,
-        fontSize=14,
-        alignment=2,
-    )
-
-    story = []
-
-    for _, r in leaves_df.iterrows():
-
-        story.append(Paragraph(ar(f"الموظف: {safe_str(r.get('name_ar'))}"), title_style))
-        story.append(Spacer(1, 8))
-
-        story.append(Paragraph(ar(f"نوع الإجازة: {safe_str(r.get('leave_type'))}"), normal_style))
-        story.append(Spacer(1, 5))
-
-        story.append(Paragraph(ar(f"من: {fmt_date(r.get('start_date'))}"), normal_style))
-        story.append(Spacer(1, 5))
-
-        story.append(Paragraph(ar(f"إلى: {fmt_date(r.get('end_date'))}"), normal_style))
-        story.append(Spacer(1, 5))
-
-        if safe_str(r.get("notes")):
-            story.append(Paragraph(ar(f"ملاحظات: {safe_str(r.get('notes'))}"), normal_style))
-            story.append(Spacer(1, 5))
-
-        # 👇 فقط اسم المرفق
-        att_name = safe_str(r.get("attachment_name"))
-        if att_name:
-            story.append(Paragraph(ar(f"📎 مرفق: {att_name}"), normal_style))
-
-        story.append(Spacer(1, 20))
-
-    doc.build(story)
-    return buf.getvalue()
-
-
 
 
 
@@ -1531,16 +1444,15 @@ def render_leave_results_table(res: pd.DataFrame):
 
 from database import get_attachment
 
+from database import get_attachment
+
 def show_leave_attachments(row):
 
     leave_id = row.get("leave_id")
 
     if st.button(
-
         "📎 تحميل",
-
         key=f"att_{leave_id}"
-
     ):
 
         att = get_attachment(leave_id)
@@ -1548,18 +1460,16 @@ def show_leave_attachments(row):
         if att and att["data"]:
 
             st.download_button(
-
                 "⬇️ تحميل المرفق",
-
                 data=att["data"],
-
                 file_name=att["name"],
-
                 key=f"download_{leave_id}"
-
-            )
-
-
+                    )
+        if st.session_state.get("refresh_leaves"):
+        
+            leaves_df = load_leaves()
+        
+            st.session_state["refresh_leaves"] = False
 
 with leave_root_tab:
 
@@ -1728,7 +1638,6 @@ with leave_root_tab:
                             else ""
                         )
 
-                        attachment_path = ""
 
                         add_leave_record(
 
@@ -1818,7 +1727,7 @@ with leave_root_tab:
                         st.success(
                             "✅ تم حفظ الإجازة بنجاح"
                         )
-
+                        st.session_state["refresh_leaves"] = True
                         st.rerun()
 
             # =====================================================
