@@ -323,6 +323,8 @@ def process_attendance(
         has_sat_presence = (emp_df["weekday"] == "Saturday").any()
         saturday_is_workday = (not is_saudi) and has_sat_presence
         schedule = "جمعة فقط" if saturday_is_workday else "جمعة وسبت"
+        SATURDAY_REQUIRED_HOURS = 3
+        SATURDAY_REQUIRED_MINUTES = SATURDAY_REQUIRED_HOURS * 60
 
         def is_workday(day_name: str, date_val=None) -> bool:
             if _is_eid_holiday(date_val):
@@ -437,6 +439,21 @@ def process_attendance(
                 try:
                     _, _, end_td_day = shift_params_for_date(row.get("date"))
 
+                    if (
+                        row.get("weekday") == "Saturday"
+                        and
+                        not is_saudi
+                    ):
+                    
+                        first_td = row.get("first_td")
+                    
+                        if first_td is not None:
+                    
+                            end_td_day = (
+                                first_td
+                                +
+                                dt.timedelta(hours=3)
+                            )
                     if last >= end_td_day:
                         return 0
 
