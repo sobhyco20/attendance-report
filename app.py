@@ -813,7 +813,9 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
             le["early_leave_minutes"] = 0
 
         if attendance_rule == "daily_hours":
+
             rows = [rtl_row([
+
                 txt(t("اليوم", "Day", lang)),
                 txt(t("التاريخ", "Date", lang)),
                 txt(t("أول بصمة", "First In", lang)),
@@ -822,24 +824,179 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
                 txt(t("التأخير", "Late", lang)),
                 txt(t("الخروج المبكر", "Early Leave", lang)),
                 txt(t("الإضافي", "Overtime", lang)),
+
             ])]
 
             for _, r in le.iterrows():
-                day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
-                row = [
-                    txt(day_val),
-                    txt(safe_str(r.get("date", ""))),
-                    txt(fmt_time(r.get("first_punch_time", ""))),
-                    txt(fmt_time(r.get("last_punch_time", ""))),
-                    txt(mm_to_hhmm(int(r.get("worked_minutes", 0) or 0))),
-                    txt(mm_to_hhmm(int(r.get("late_minutes", 0) or 0))),
-                    txt(mm_to_hhmm(int(r.get("early_leave_minutes", 0) or 0))),
-                    txt(mm_to_hhmm(int(r.get("overtime_minutes", 0) or 0))),
-                ]
-                rows.append(rtl_row(row))
 
-            widths = rtl_cols([2.2*cm, 2.7*cm, 2.2*cm, 2.2*cm, 2.6*cm, 2.2*cm, 2.6*cm, 2.2*cm])
-            t1 = Table(rows, colWidths=widths)
+                day_val = safe_str(
+
+                    r.get(
+                        "weekday_ar",
+                        r.get("weekday", "")
+                    )
+
+                ) if lang == "ar" else safe_str(
+                    r.get("weekday", "")
+                )
+
+                # =====================================================
+                # القيم الأساسية
+                # =====================================================
+
+                worked_minutes = int(
+                    r.get("worked_minutes", 0) or 0
+                )
+
+                late_minutes = int(
+                    r.get("late_minutes", 0) or 0
+                )
+
+                early_leave_minutes = int(
+                    r.get("early_leave_minutes", 0) or 0
+                )
+
+                overtime_minutes = int(
+                    r.get("overtime_minutes", 0) or 0
+                )
+
+                weekday_name = safe_str(
+                    r.get("weekday", "")
+                )
+
+                schedule_name = safe_str(
+                    emp_row.get("schedule", "")
+                )
+
+                # =====================================================
+                # السبت لغير السعوديين = 3 ساعات فقط
+                # =====================================================
+
+                if (
+
+                    weekday_name == "Saturday"
+
+                    and
+
+                    schedule_name == "الجمعة فقط"
+
+                ):
+
+                    # =============================================
+                    # لا يوجد تأخير ثابت يوم السبت
+                    # =============================================
+
+                    late_minutes = 0
+
+                    # =============================================
+                    # المطلوب 3 ساعات فقط
+                    # =============================================
+
+                    REQUIRED_SAT_MINUTES = 180
+
+                    # =============================================
+                    # خروج مبكر إذا أقل من 3 ساعات
+                    # =============================================
+
+                    if worked_minutes < REQUIRED_SAT_MINUTES:
+
+                        early_leave_minutes = (
+
+                            REQUIRED_SAT_MINUTES
+                            -
+                            worked_minutes
+
+                        )
+
+                        overtime_minutes = 0
+
+                    else:
+
+                        early_leave_minutes = 0
+
+                        overtime_minutes = (
+
+                            worked_minutes
+                            -
+                            REQUIRED_SAT_MINUTES
+
+                        )
+
+                row = [
+
+                    txt(day_val),
+
+                    txt(
+                        safe_str(
+                            r.get("date", "")
+                        )
+                    ),
+
+                    txt(
+                        fmt_time(
+                            r.get(
+                                "first_punch_time",
+                                ""
+                            )
+                        )
+                    ),
+
+                    txt(
+                        fmt_time(
+                            r.get(
+                                "last_punch_time",
+                                ""
+                            )
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            worked_minutes
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            late_minutes
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            early_leave_minutes
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            overtime_minutes
+                        )
+                    ),
+
+                ]
+
+                rows.append(
+                    rtl_row(row)
+                )
+
+            widths = rtl_cols([
+
+                2.2 * cm,
+                2.7 * cm,
+                2.2 * cm,
+                2.2 * cm,
+                2.6 * cm,
+                2.2 * cm,
+                2.6 * cm,
+                2.2 * cm,
+
+            ])
+
+            t1 = Table(
+                rows,
+                colWidths=widths
+            )
         else:
             rows = [rtl_row([
                 txt(t("اليوم", "Day", lang)),
