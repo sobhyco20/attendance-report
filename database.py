@@ -229,3 +229,31 @@ def get_attachment(leave_id):
         }
 
     return None
+
+
+# =========================
+# تحديث قاعدة البيانات
+# =========================
+
+def migrate_db():
+
+    conn = get_connection()
+
+    cur = conn.cursor()
+
+    # إضافة attachment_data إذا غير موجود
+    try:
+
+        cur.execute("""
+
+            ALTER TABLE leaves
+
+            ADD COLUMN attachment_data BLOB
+
+        """)
+
+    except Exception:
+        pass
+
+    conn.commit()
+    conn.close()
