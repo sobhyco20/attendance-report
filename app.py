@@ -1540,11 +1540,6 @@ with leave_root_tab:
 
     with register_tab:
         st.markdown('<div class="card"><div class="card-title">➕ تسجيل إجازة جديدة</div>', unsafe_allow_html=True)
-
-   
-       # =========================================================
-       # رفع ملف إجازات كامل
-       # =========================================================
    
        st.markdown("## 📂 رفع ملف إجازات كامل")
    
@@ -1577,7 +1572,6 @@ with leave_root_tab:
    
        if employee_lookup.empty:
        
-        if employee_lookup.empty:
             st.warning("ملف الموظفين غير متوفر، لذلك لا يمكن تسجيل الإجازات.")
         else:
             options_map = {
