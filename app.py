@@ -1619,156 +1619,156 @@ with leave_root_tab:
                         st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
-      # =========================================================
-      # رفع ملف إجازات كامل
-      # =========================================================
-      
-      st.markdown("## 📂 رفع ملف إجازات كامل")
-      
-      uploaded_leaves_file = st.file_uploader(
-          "ارفع ملف الإجازات",
-          type=["xlsx", "xls"],
-          key="bulk_leaves_upload"
-      )
-      
-      if uploaded_leaves_file is not None:
-      
-          try:
-      
-              bulk_df = pd.read_excel(uploaded_leaves_file)
-      
-              bulk_df = bulk_df.rename(columns={
-      
-                  "Employee ID": "employee_id",
-                  "Employee No": "employee_no",
-                  "Arabic name": "name_ar",
-                  "Search name": "name_en",
-                  "Department": "department",
-                  "Section | Department": "department",
-                  "Contrac Profession": "job_title",
-      
-                  "Leave Type": "leave_type",
-                  "نوع الإجازة": "leave_type",
-      
-                  "Start Date": "start_date",
-                  "من": "start_date",
-      
-                  "End Date": "end_date",
-                  "إلى": "end_date",
-      
-                  "Status": "status",
-                  "الحالة": "status",
-      
-                  "Notes": "notes",
-                  "ملاحظات": "notes",
-      
-              })
-      
-              required_cols = [
-                  "employee_id",
-                  "leave_type",
-                  "start_date",
-                  "end_date",
-              ]
-      
-              missing_cols = [
-                  c for c in required_cols
-                  if c not in bulk_df.columns
-              ]
-      
-              if missing_cols:
-      
-                  st.error(
-                      f"❌ الأعمدة التالية غير موجودة: {missing_cols}"
-                  )
-      
-              else:
-      
-                  bulk_df["employee_id"] = (
-                      bulk_df["employee_id"]
-                      .astype(str)
-                      .str.strip()
-                  )
-      
-                  if "employee_no" not in bulk_df.columns:
-                      bulk_df["employee_no"] = bulk_df["employee_id"]
-      
-                  if "name_ar" not in bulk_df.columns:
-                      bulk_df["name_ar"] = ""
-      
-                  if "name_en" not in bulk_df.columns:
-                      bulk_df["name_en"] = ""
-      
-                  if "department" not in bulk_df.columns:
-                      bulk_df["department"] = ""
-      
-                  if "job_title" not in bulk_df.columns:
-                      bulk_df["job_title"] = ""
-      
-                  if "status" not in bulk_df.columns:
-                      bulk_df["status"] = "معتمدة"
-      
-                  if "notes" not in bulk_df.columns:
-                      bulk_df["notes"] = ""
-      
-                  bulk_df["start_date"] = pd.to_datetime(
-                      bulk_df["start_date"],
-                      errors="coerce"
-                  )
-      
-                  bulk_df["end_date"] = pd.to_datetime(
-                      bulk_df["end_date"],
-                      errors="coerce"
-                  )
-      
-                  bulk_df = bulk_df.dropna(
-                      subset=["start_date", "end_date"]
-                  )
-      
-                  bulk_df["leave_id"] = [
-                      f"LV-{i+1}-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
-                      for i in range(len(bulk_df))
-                  ]
-      
-                  bulk_df["attachment_name"] = ""
-                  bulk_df["attachment_path"] = ""
-      
-                  bulk_df["created_at"] = pd.Timestamp.now()
-      
-                  bulk_df["created_by"] = (
-                      st.session_state.get("login_user", "")
-                  )
-      
-                  old_leaves = load_leaves()
-      
-                  final_df = pd.concat(
-                      [old_leaves, bulk_df],
-                      ignore_index=True
-                  )
-      
-                  save_leaves(final_df)
-      
-                  st.success(
-                      f"✅ تم رفع {len(bulk_df)} إجازة بنجاح"
-                  )
-      
-                  st.dataframe(
-                      bulk_df[
-                          [
-                              "employee_id",
-                              "name_ar",
-                              "leave_type",
-                              "start_date",
-                              "end_date",
-                              "status",
-                          ]
-                      ],
-                      use_container_width=True
-                  )
-      
-          except Exception as e:
-      
-              st.error(f"❌ خطأ أثناء رفع الملف: {e}")
+   # =========================================================
+   # رفع ملف إجازات كامل
+   # =========================================================
+   
+   st.markdown("## 📂 رفع ملف إجازات كامل")
+   
+   uploaded_leaves_file = st.file_uploader(
+       "ارفع ملف الإجازات",
+       type=["xlsx", "xls"],
+       key="bulk_leaves_upload"
+   )
+   
+   if uploaded_leaves_file is not None:
+   
+       try:
+   
+           bulk_df = pd.read_excel(uploaded_leaves_file)
+   
+           bulk_df = bulk_df.rename(columns={
+   
+               "Employee ID": "employee_id",
+               "Employee No": "employee_no",
+               "Arabic name": "name_ar",
+               "Search name": "name_en",
+               "Department": "department",
+               "Section | Department": "department",
+               "Contrac Profession": "job_title",
+   
+               "Leave Type": "leave_type",
+               "نوع الإجازة": "leave_type",
+   
+               "Start Date": "start_date",
+               "من": "start_date",
+   
+               "End Date": "end_date",
+               "إلى": "end_date",
+   
+               "Status": "status",
+               "الحالة": "status",
+   
+               "Notes": "notes",
+               "ملاحظات": "notes",
+   
+           })
+   
+           required_cols = [
+               "employee_id",
+               "leave_type",
+               "start_date",
+               "end_date",
+           ]
+   
+           missing_cols = [
+               c for c in required_cols
+               if c not in bulk_df.columns
+           ]
+   
+           if missing_cols:
+   
+               st.error(
+                   f"❌ الأعمدة التالية غير موجودة: {missing_cols}"
+               )
+   
+           else:
+   
+               bulk_df["employee_id"] = (
+                   bulk_df["employee_id"]
+                   .astype(str)
+                   .str.strip()
+               )
+   
+               if "employee_no" not in bulk_df.columns:
+                   bulk_df["employee_no"] = bulk_df["employee_id"]
+   
+               if "name_ar" not in bulk_df.columns:
+                   bulk_df["name_ar"] = ""
+   
+               if "name_en" not in bulk_df.columns:
+                   bulk_df["name_en"] = ""
+   
+               if "department" not in bulk_df.columns:
+                   bulk_df["department"] = ""
+   
+               if "job_title" not in bulk_df.columns:
+                   bulk_df["job_title"] = ""
+   
+               if "status" not in bulk_df.columns:
+                   bulk_df["status"] = "معتمدة"
+   
+               if "notes" not in bulk_df.columns:
+                   bulk_df["notes"] = ""
+   
+               bulk_df["start_date"] = pd.to_datetime(
+                   bulk_df["start_date"],
+                   errors="coerce"
+               )
+   
+               bulk_df["end_date"] = pd.to_datetime(
+                   bulk_df["end_date"],
+                   errors="coerce"
+               )
+   
+               bulk_df = bulk_df.dropna(
+                   subset=["start_date", "end_date"]
+               )
+   
+               bulk_df["leave_id"] = [
+                   f"LV-{i+1}-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
+                   for i in range(len(bulk_df))
+               ]
+   
+               bulk_df["attachment_name"] = ""
+               bulk_df["attachment_path"] = ""
+   
+               bulk_df["created_at"] = pd.Timestamp.now()
+   
+               bulk_df["created_by"] = (
+                   st.session_state.get("login_user", "")
+               )
+   
+               old_leaves = load_leaves()
+   
+               final_df = pd.concat(
+                   [old_leaves, bulk_df],
+                   ignore_index=True
+               )
+   
+               save_leaves(final_df)
+   
+               st.success(
+                   f"✅ تم رفع {len(bulk_df)} إجازة بنجاح"
+               )
+   
+               st.dataframe(
+                   bulk_df[
+                       [
+                           "employee_id",
+                           "name_ar",
+                           "leave_type",
+                           "start_date",
+                           "end_date",
+                           "status",
+                       ]
+                   ],
+                   use_container_width=True
+               )
+   
+       except Exception as e:
+   
+           st.error(f"❌ خطأ أثناء رفع الملف: {e}")
 
    
     with view_tab:
