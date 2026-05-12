@@ -829,7 +829,7 @@ def process_attendance(
             agg["last_punch_time"] = agg["last_out_dt"].dt.time
             agg["first_td"] = agg["first_punch_time"].apply(time_to_td)
             agg["last_td"] = agg["last_punch_time"].apply(time_to_td)
-
+            
             worked_minutes_list = []
             late_list = []
             overtime_list = []
@@ -887,7 +887,7 @@ def process_attendance(
             
                     # =====================================
                     # السبت لغير السعوديين
-                    # حضور فقط بدون أي احتساب
+                    # حضور وانصراف فقط
                     # =====================================
             
                     if (
@@ -1011,85 +1011,65 @@ def process_attendance(
                 early_leave_list.append(
                     early_leave_m
                 )
-
+            
             agg["worked_minutes"] = worked_minutes_list
             agg["late_minutes"] = late_list
             agg["overtime_minutes"] = overtime_list
             agg["early_leave_minutes"] = early_leave_list
+            
+            agg["date"] = pd.to_datetime(
+                agg["date_only"]
+            )
+            
             # =========================================
-            # تصفير السبت نهائياً لغير السعوديين
+            # حذف السبت نهائياً من المخالفات
             # =========================================
             
-            sat_mask = (
+            interesting = agg[
             
-                (agg["weekday"] == "Saturday")
+                (
+            
+                    (agg["late_minutes"] > 0)
+            
+                    |
+            
+                    (agg["overtime_minutes"] > 0)
+            
+                    |
+            
+                    (agg["early_leave_minutes"] > 0)
+            
+                )
             
                 &
             
-                (~agg["is_workday"].isna())
+                ~(
+                    (agg["weekday"] == "Saturday")
+                    &
+                    (not is_saudi)
+                )
             
+            ].copy().sort_values("date")
+            
+            # =========================================
+            # الإجماليات بدون السبت
+            # =========================================
+            
+            non_sat = agg.loc[
+                agg["weekday"] != "Saturday"
+            ].copy()
+            
+            total_late = int(
+                non_sat["late_minutes"].sum()
             )
             
-            if not is_saudi:
+            total_overtime = int(
+                non_sat["overtime_minutes"].sum()
+            )
             
-                agg.loc[sat_mask, "late_minutes"] = 0
-            
-                agg.loc[sat_mask, "overtime_minutes"] = 0
-            
-                agg.loc[sat_mask, "early_leave_minutes"] = 0
-            agg["date"] = pd.to_datetime(agg["date_only"])
-
-            interesting = agg[
-                (agg["late_minutes"] > 0) |
-                (agg["overtime_minutes"] > 0) |
-                (agg["early_leave_minutes"] > 0)
-            ].copy().sort_values("date")
-
-            total_late = int(agg["late_minutes"].sum())
-            total_overtime = int(agg["overtime_minutes"].sum())
-            total_early_leave = int(agg["early_leave_minutes"].sum())
-
-            for _, r in interesting.iterrows():
-                late_details.append(
-                    {
-                        "employee_id": emp_id,
-                        "employee_no": emp_no,
-                        "name_ar": name_ar,
-                        "name_en": name_en,
-                        "job_title": emp_job,
-                        "nationality": emp_nat,
-                        "department": emp_dept,
-                        "date": r["date"].date() if pd.notna(r["date"]) else None,
-                        "weekday": r["weekday"],
-                        "weekday_ar": r["weekday_ar"],
-                        "late_minutes": int(r["late_minutes"]),
-                        "early_leave_minutes": int(r["early_leave_minutes"]),
-                        "overtime_minutes": int(r["overtime_minutes"]),
-                        "worked_minutes": int(r["worked_minutes"]),
-                        "schedule": schedule,
-                        "first_punch_time": r.get("first_punch_time"),
-                        "last_punch_time": r.get("last_punch_time"),
-                        "attendance_calculation": "daily_hours",
-                    }
-                )
-
-                exempt_details.append(
-                    {
-                        "employee_id": emp_id,
-                        "employee_no": emp_no,
-                        "name_ar": name_ar,
-                        "department": emp_dept,
-                        "date": r["date"].date(),
-                        "weekday_ar": r["weekday_ar"],
-                        "first_in": r.get("first_punch_time"),
-                        "last_out": r.get("last_punch_time"),
-                        "worked_minutes": int(r["worked_minutes"]),
-                        "late_minutes": int(r["late_minutes"]),
-                        "early_leave_minutes": int(r["early_leave_minutes"]),
-                        "overtime_minutes": int(r["overtime_minutes"]),
-                    }
-                )
-
+            total_early_leave = int(
+                non_sat["early_leave_minutes"].sum()
+            )
             results.append(
                 {
                     "employee_id": emp_id,
@@ -1105,9 +1085,13 @@ def process_attendance(
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
                     "approved_leave_days": len(leave_dates),
-                    "late_days": int((agg["late_minutes"] > 0).sum()),
+                    "late_days": int(
+                        (non_sat["late_minutes"] > 0).sum()
+                    ),
                     "total_late_minutes": total_late,
-                    "early_leave_days": int((agg["early_leave_minutes"] > 0).sum()),
+                    "early_leave_days": int(
+                        (non_sat["early_leave_minutes"] > 0).sum()
+                    ),
                     "total_early_leave_minutes": total_early_leave,
                     "attendance_calculation": "daily_hours",
                     "total_overtime_minutes": total_overtime,
