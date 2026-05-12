@@ -1116,339 +1116,92 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
                 le[c] = 0
 
         # =========================================
+         # =========================================
         # حذف السبت لغير السعوديين
         # =========================================
-
-        schedule_name = safe_str(
-            emp_row.get("schedule", "")
-        )
-
+        
         if (
             "جمعة فقط" in schedule_name
             or
             "الجمعة فقط" in schedule_name
         ):
-
+        
             le = le[
                 le["weekday"] != "Saturday"
             ].copy()
-
+        
         # =========================================
         # حذف الصفوف الفارغة
         # =========================================
-
+        
+        for c in [
+        
+            "late_minutes",
+            "early_leave_minutes",
+            "overtime_minutes"
+        
+        ]:
+        
+            if c not in le.columns:
+        
+                le[c] = 0
+        
         le = le[
-
+        
             (
                 le["late_minutes"].fillna(0) > 0
             )
-
+        
             |
-
+        
             (
                 le["early_leave_minutes"].fillna(0) > 0
             )
-
+        
             |
-
+        
             (
                 le["overtime_minutes"].fillna(0) > 0
             )
-
+        
         ].copy()
-
-        if "date" in le.columns:
-
-            le = le.sort_values("date")
-
-            le["date"] = le["date"].apply(
-                fmt_date
-            )
-
-        if attendance_rule == "daily_hours":
-
-            rows = [rtl_row([
-
-                txt("اليوم" if lang == "ar" else "Day"),
-                txt("التاريخ" if lang == "ar" else "Date"),
-                txt("أول بصمة" if lang == "ar" else "First In"),
-                txt("آخر بصمة" if lang == "ar" else "Last Out"),
-                txt("ساعات العمل" if lang == "ar" else "Worked"),
-                txt("التأخير" if lang == "ar" else "Late"),
-                txt("الخروج المبكر" if lang == "ar" else "Early Leave"),
-                txt("الإضافي" if lang == "ar" else "Overtime"),
-
-            ])]
-
-            for _, r in le.iterrows():
-
-                day_val = (
-
-                    safe_str(
-                        r.get(
-                            "weekday_ar",
-                            r.get("weekday", "")
-                        )
-                    )
-
-                    if lang == "ar"
-
-                    else
-
-                    safe_str(
-                        r.get("weekday", "")
-                    )
-
-                )
-
-                row = [
-
-                    txt(day_val),
-
-                    txt(
-                        safe_str(
-                            r.get("date", "")
-                        )
-                    ),
-
-                    txt(
-                        fmt_time(
-                            r.get(
-                                "first_punch_time",
-                                ""
-                            )
-                        )
-                    ),
-
-                    txt(
-                        fmt_time(
-                            r.get(
-                                "last_punch_time",
-                                ""
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "worked_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "late_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "early_leave_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "overtime_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                ]
-
-                rows.append(
-                    rtl_row(row)
-                )
-
-            widths = rtl_cols([
-
-                2.2 * cm,
-                2.7 * cm,
-                2.2 * cm,
-                2.2 * cm,
-                2.6 * cm,
-                2.2 * cm,
-                2.6 * cm,
-                2.2 * cm,
-
-            ])
-
-        else:
-
-            rows = [rtl_row([
-
-                txt("اليوم" if lang == "ar" else "Day"),
-                txt("التاريخ" if lang == "ar" else "Date"),
-                txt("أول بصمة" if lang == "ar" else "First Punch"),
-                txt("آخر بصمة" if lang == "ar" else "Last Punch"),
-                txt("التأخير" if lang == "ar" else "Late"),
-                txt("الخروج المبكر" if lang == "ar" else "Early Leave"),
-
-            ])]
-
-            for _, r in le.iterrows():
-
-                day_val = (
-
-                    safe_str(
-                        r.get(
-                            "weekday_ar",
-                            r.get("weekday", "")
-                        )
-                    )
-
-                    if lang == "ar"
-
-                    else
-
-                    safe_str(
-                        r.get("weekday", "")
-                    )
-
-                )
-
-                row = [
-
-                    txt(day_val),
-
-                    txt(
-                        safe_str(
-                            r.get("date", "")
-                        )
-                    ),
-
-                    txt(
-                        fmt_time(
-                            r.get(
-                                "first_punch_time",
-                                ""
-                            )
-                        )
-                    ),
-
-                    txt(
-                        fmt_time(
-                            r.get(
-                                "last_punch_time",
-                                ""
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "late_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                    txt(
-                        mm_to_hhmm(
-                            int(
-                                r.get(
-                                    "early_leave_minutes",
-                                    0
-                                ) or 0
-                            )
-                        )
-                    ),
-
-                ]
-
-                rows.append(
-                    rtl_row(row)
-                )
-
-            widths = rtl_cols([
-
-                3.0 * cm,
-                3.2 * cm,
-                2.8 * cm,
-                2.8 * cm,
-                2.8 * cm,
-                3.0 * cm
-
-            ])
-
-        t1 = Table(
-            rows,
-            colWidths=widths
-        )
-
-        t1.setStyle(TableStyle([
-
-            ("FONTNAME", (0, 0), (-1, -1), font_main),
-            ("FONTSIZE", (0, 0), (-1, 0), 10),
-            ("FONTSIZE", (0, 1), (-1, -1), 9.2),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-
-        ]))
-
-        story.append(t1)
-
-        story.append(
-            Spacer(1, 8)
-        )
-
+        
         # =========================================
-        # الإجماليات من نفس الجدول الظاهر
+        # الإجماليات من نفس الجدول الظاهر فقط
         # =========================================
-
+        
         total_late = int(
+        
             le["late_minutes"]
             .fillna(0)
             .astype(float)
             .sum()
+        
         )
-
+        
         total_early_leave = int(
+        
             le["early_leave_minutes"]
             .fillna(0)
             .astype(float)
             .sum()
+        
         )
-
+        
         total_overtime = int(
+        
             le["overtime_minutes"]
             .fillna(0)
             .astype(float)
             .sum()
+        
         )
-
+        
         total_deduction = (
             total_late
             +
             total_early_leave
         )
-
         if lang == "ar":
 
             story.append(
