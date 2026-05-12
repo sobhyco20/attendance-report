@@ -1013,11 +1013,45 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         ]))
         story.append(t1)
         story.append(Spacer(1, 8))
-
-        total_late = int(emp_row.get("total_late_minutes", 0) or 0)
-        total_early_leave = int(emp_row.get("total_early_leave_minutes", 0) or 0)
-        total_overtime = int(emp_row.get("total_overtime_minutes", 0) or 0)
-        total_deduction = total_late + total_early_leave
+        
+        # =====================================================
+        # إعادة احتساب الإجماليات من الجدول نفسه
+        # لاستبعاد السبت نهائياً
+        # =====================================================
+        
+        pdf_df = le.copy()
+        
+        schedule_name = safe_str(
+            emp_row.get("schedule", "")
+        )
+        
+        if (
+            "جمعة فقط" in schedule_name
+            or
+            "الجمعة فقط" in schedule_name
+        ):
+        
+            pdf_df = pdf_df[
+                pdf_df["weekday"] != "Saturday"
+            ].copy()
+        
+        total_late = int(
+            pdf_df["late_minutes"].fillna(0).sum()
+        )
+        
+        total_early_leave = int(
+            pdf_df["early_leave_minutes"].fillna(0).sum()
+        )
+        
+        total_overtime = int(
+            pdf_df["overtime_minutes"].fillna(0).sum()
+        )
+        
+        total_deduction = (
+            total_late
+            +
+            total_early_leave
+        )
 
         if lang == "ar":
             story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"), total_style))
