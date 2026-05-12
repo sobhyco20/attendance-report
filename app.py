@@ -1620,38 +1620,38 @@ with leave_root_tab:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-
-   with leave_root_tab:
-
-    st.markdown("## 📂 رفع ملف إجازات كامل")
-
-    uploaded_leaves_file = st.file_uploader(
-        "ارفع ملف الإجازات",
-        type=["xlsx", "xls"],
-        key="bulk_leaves_upload"
-    )
-
-    if uploaded_leaves_file is not None:
-
-        try:
-
-            bulk_df = pd.read_excel(
-                uploaded_leaves_file
-            )
-
-            st.success(
-                "✅ تم رفع الملف بنجاح"
-            )
-
-            st.dataframe(
-                bulk_df,
-                use_container_width=True
-            )
-
-        except Exception as e:
-
-            st.error(f"❌ {e}")
-
+   
+      with leave_root_tab:
+   
+       st.markdown("## 📂 رفع ملف إجازات كامل")
+   
+       uploaded_leaves_file = st.file_uploader(
+           "ارفع ملف الإجازات",
+           type=["xlsx", "xls"],
+           key="bulk_leaves_upload"
+       )
+   
+       if uploaded_leaves_file is not None:
+   
+           try:
+   
+               bulk_df = pd.read_excel(
+                   uploaded_leaves_file
+               )
+   
+               st.success(
+                   "✅ تم رفع الملف بنجاح"
+               )
+   
+               st.dataframe(
+                   bulk_df,
+                   use_container_width=True
+               )
+   
+           except Exception as e:
+   
+               st.error(f"❌ {e}")
+   
 
       
 
