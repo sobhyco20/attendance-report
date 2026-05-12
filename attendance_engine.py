@@ -347,11 +347,6 @@ def process_attendance(
         # دوام السبت
         # =====================================================
 
-        SATURDAY_REQUIRED_HOURS = 3
-
-        SATURDAY_REQUIRED_MINUTES = (
-            SATURDAY_REQUIRED_HOURS * 60
-        )
 
         # =====================================================
         # تحديد أيام العمل
@@ -654,7 +649,7 @@ def process_attendance(
         ]
 
         if attendance_rule != "daily_hours":
-            
+                        
             def calc_late(row):
             
                 first = row.get("first_td")
@@ -666,7 +661,8 @@ def process_attendance(
                 try:
             
                     # =====================================
-                    # السبت لغير السعودي = بدون تأخير
+                    # السبت لغير السعودي
+                    # لا يوجد تأخير
                     # =====================================
             
                     if (
@@ -706,8 +702,8 @@ def process_attendance(
                 except Exception:
             
                     return 0
-
             
+                        
             def calc_early_leave(row):
             
                 last = row.get("last_td")
@@ -720,7 +716,7 @@ def process_attendance(
             
                     # =====================================
                     # السبت لغير السعوديين
-                    # المطلوب فقط 3 ساعات
+                    # لا يوجد خروج مبكر
                     # =====================================
             
                     if (
@@ -733,37 +729,7 @@ def process_attendance(
             
                     ):
             
-                        first_td = row.get("first_td")
-            
-                        if first_td is None:
-            
-                            return SATURDAY_REQUIRED_MINUTES
-            
-                        worked_minutes = int(
-            
-                            (
-                                last - first_td
-                            ).total_seconds()
-            
-                            // 60
-            
-                        )
-            
-                        if worked_minutes >= SATURDAY_REQUIRED_MINUTES:
-            
-                            return 0
-            
-                        return (
-            
-                            SATURDAY_REQUIRED_MINUTES
-                            -
-                            worked_minutes
-            
-                        )
-            
-                    # =====================================
-                    # الأيام العادية
-                    # =====================================
+                        return 0
             
                     _, _, end_td_day = (
                         shift_params_for_date(
@@ -790,7 +756,6 @@ def process_attendance(
                 except Exception:
             
                     return 0
-                    
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
             emp_df["early_leave_minutes"] = emp_df.apply(calc_early_leave, axis=1)
 
