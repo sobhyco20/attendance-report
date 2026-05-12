@@ -801,6 +801,64 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         story.append(Paragraph(txt(t("لا يوجد بيانات", "No records", lang)), p_style))
     else:
         le = late_emp.copy()
+
+        # =====================================================
+        # نفس البيانات الظاهرة على الشاشة فقط
+        # =====================================================
+        
+        for c in [
+        
+            "late_minutes",
+            "early_leave_minutes",
+            "overtime_minutes"
+        
+        ]:
+        
+            if c not in le.columns:
+        
+                le[c] = 0
+        
+        # =========================================
+        # حذف السبت لغير السعوديين
+        # =========================================
+        
+        schedule_name = safe_str(
+            emp_row.get("schedule", "")
+        )
+        
+        if (
+            "جمعة فقط" in schedule_name
+            or
+            "الجمعة فقط" in schedule_name
+        ):
+        
+            le = le[
+                le["weekday"] != "Saturday"
+            ].copy()
+        
+        # =========================================
+        # حذف الصفوف الفارغة
+        # =========================================
+        
+        le = le[
+        
+            (
+                le["late_minutes"].fillna(0) > 0
+            )
+        
+            |
+        
+            (
+                le["early_leave_minutes"].fillna(0) > 0
+            )
+        
+            |
+        
+            (
+                le["overtime_minutes"].fillna(0) > 0
+            )
+        
+        ].copy()
         # =====================================================
         # حذف السبت نهائياً من PDF لغير السعوديين
         # =====================================================
@@ -2577,9 +2635,12 @@ with main_tab:
                 )
             
             ].copy()
+
+
+            
             pdf_ar = build_pdf(
                 emp,
-                late_emp_pdf,
+                late_emp,
                 abs_emp,
                 leave_emp,
                 lang="ar"
@@ -2587,7 +2648,7 @@ with main_tab:
             
             pdf_en = build_pdf(
                 emp,
-                late_emp_pdf,
+                late_emp,
                 abs_emp,
                 leave_emp,
                 lang="en"
