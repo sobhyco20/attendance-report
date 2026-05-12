@@ -834,103 +834,209 @@ def process_attendance(
             late_list = []
             overtime_list = []
             early_leave_list = []
-
+            
             for _, row in agg.iterrows():
-                if not bool(row["is_workday"]) or _is_eid_holiday(row.get("date_only")):
-                
+            
+                # =========================================
+                # الأيام غير المحتسبة
+                # =========================================
+            
+                if (
+            
+                    not bool(row["is_workday"])
+            
+                    or
+            
+                    _is_eid_holiday(
+                        row.get("date_only")
+                    )
+            
+                ):
+            
                     worked_minutes = 0
                     late_m = 0
                     overtime_m = 0
                     early_leave_m = 0
-                
+            
                 else:
-                
+            
                     fi = row["first_in_dt"]
                     lo = row["last_out_dt"]
-                
+            
+                    # =====================================
+                    # حساب ساعات العمل
+                    # =====================================
+            
                     if pd.isna(fi) or pd.isna(lo):
+            
                         worked_minutes = 0
+            
                     else:
+            
                         delta = lo - fi
+            
                         worked_minutes = max(
+            
                             0,
-                            int(delta.total_seconds() // 60)
+            
+                            int(
+                                delta.total_seconds() // 60
+                            )
+            
                         )
-                
-                    # =========================================
+            
+                    # =====================================
                     # السبت لغير السعوديين
-                    # حضور وانصراف فقط
-                    # لا تأخير - لا خروج مبكر - لا إضافي
-                    # الغياب فقط يتم احتسابه من absent_days
-                    # =========================================
-                
+                    # حضور فقط بدون أي احتساب
+                    # =====================================
+            
                     if (
+            
                         row["weekday"] == "Saturday"
+            
                         and
+            
                         not is_saudi
+            
                     ):
-                
+            
                         late_m = 0
                         overtime_m = 0
                         early_leave_m = 0
-                
+            
                     else:
-                
-                        _, late_limit_day, end_td_day = shift_params_for_date(
-                            row.get("date_only")
+            
+                        _, late_limit_day, end_td_day = (
+            
+                            shift_params_for_date(
+                                row.get("date_only")
+                            )
+            
                         )
-                
+            
+                        # =================================
+                        # التأخير
+                        # =================================
+            
                         if row["first_td"] is None:
+            
                             late_m = 0
+            
                         elif row["first_td"] <= late_limit_day:
+            
                             late_m = 0
+            
                         else:
+            
                             late_m = int(
+            
                                 (
                                     row["first_td"]
                                     -
                                     late_limit_day
                                 ).total_seconds()
+            
                                 // 60
+            
                             )
-                
+            
+                        # =================================
+                        # الإضافي
+                        # =================================
+            
                         if row["last_td"] is None:
+            
                             overtime_m = 0
+            
                         elif row["last_td"] <= end_td_day:
+            
                             overtime_m = 0
+            
                         else:
+            
                             overtime_m = int(
+            
                                 (
                                     row["last_td"]
                                     -
                                     end_td_day
                                 ).total_seconds()
+            
                                 // 60
+            
                             )
-                
+            
+                        # =================================
+                        # الخروج المبكر
+                        # =================================
+            
                         if row["last_td"] is None:
+            
                             early_leave_m = 0
+            
                         elif row["last_td"] >= end_td_day:
+            
                             early_leave_m = 0
+            
                         else:
+            
                             early_leave_m = int(
+            
                                 (
                                     end_td_day
                                     -
                                     row["last_td"]
                                 ).total_seconds()
+            
                                 // 60
+            
                             )
-
-                worked_minutes_list.append(worked_minutes)
-                late_list.append(late_m)
-                overtime_list.append(overtime_m)
-                early_leave_list.append(early_leave_m)
+            
+                # =========================================
+                # حفظ النتائج
+                # =========================================
+            
+                worked_minutes_list.append(
+                    worked_minutes
+                )
+            
+                late_list.append(
+                    late_m
+                )
+            
+                overtime_list.append(
+                    overtime_m
+                )
+            
+                early_leave_list.append(
+                    early_leave_m
+                )
 
             agg["worked_minutes"] = worked_minutes_list
             agg["late_minutes"] = late_list
             agg["overtime_minutes"] = overtime_list
             agg["early_leave_minutes"] = early_leave_list
+            # =========================================
+            # تصفير السبت نهائياً لغير السعوديين
+            # =========================================
+            
+            sat_mask = (
+            
+                (agg["weekday"] == "Saturday")
+            
+                &
+            
+                (~agg["is_workday"].isna())
+            
+            )
+            
+            if not is_saudi:
+            
+                agg.loc[sat_mask, "late_minutes"] = 0
+            
+                agg.loc[sat_mask, "overtime_minutes"] = 0
+            
+                agg.loc[sat_mask, "early_leave_minutes"] = 0
             agg["date"] = pd.to_datetime(agg["date_only"])
 
             interesting = agg[
