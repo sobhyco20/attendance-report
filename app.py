@@ -886,7 +886,11 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
                 
                     and
                 
-                    schedule_name == "الجمعة فقط"
+                    (
+                        "جمعة فقط" in schedule_name
+                        or
+                        "الجمعة فقط" in schedule_name
+                    )
                 
                 ):
                 
@@ -2462,7 +2466,16 @@ with main_tab:
 
             title = month_year_title(emp)
             schedule = safe_str(emp.get("schedule", ""))
-            sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
+            sat_note = (
+                "✅ دوام السبت"
+                if (
+                    "جمعة فقط" in schedule
+                    or
+                    "الجمعة فقط" in schedule
+                )
+                else
+                "🛑 إجازة السبت"
+            )
             fri_note = "🛑 إجازة الجمعة"
 
             st.markdown(
