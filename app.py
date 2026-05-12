@@ -1193,12 +1193,16 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         
         )
         
-        total_deduction = (
-            total_late
-            +
-            total_early_leave
-        )        if lang == "ar":
-
+        table.setStyle(
+            TableStyle([
+                ...
+            ])
+        )
+        
+        if lang == "ar":
+            elements.append(table)
+        
+            
             story.append(
                 Paragraph(
                     ar(
