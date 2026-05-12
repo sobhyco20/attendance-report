@@ -2474,8 +2474,70 @@ with main_tab:
             if not leave_emp.empty and "weekday" in leave_emp.columns:
                 leave_emp["weekday_ar"] = leave_emp["weekday"].apply(weekday_to_ar)
 
-            pdf_ar = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="ar")
-            pdf_en = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="en")
+            # =====================================================
+            # نفس البيانات المعروضة على الشاشة فقط
+            # =====================================================
+            
+            late_emp_pdf = late_emp.copy()
+            
+            schedule_name = safe_str(
+                emp.get("schedule", "")
+            )
+            
+            # =========================================
+            # حذف السبت لغير السعوديين
+            # =========================================
+            
+            if (
+                "جمعة فقط" in schedule_name
+                or
+                "الجمعة فقط" in schedule_name
+            ):
+            
+                late_emp_pdf = late_emp_pdf[
+            
+                    late_emp_pdf["weekday"] != "Saturday"
+            
+                ].copy()
+            
+            # =========================================
+            # حذف الصفوف الفارغة
+            # =========================================
+            
+            late_emp_pdf = late_emp_pdf[
+            
+                (
+                    late_emp_pdf["late_minutes"].fillna(0) > 0
+                )
+            
+                |
+            
+                (
+                    late_emp_pdf["early_leave_minutes"].fillna(0) > 0
+                )
+            
+                |
+            
+                (
+                    late_emp_pdf["overtime_minutes"].fillna(0) > 0
+                )
+            
+            ].copy()
+            pdf_ar = build_pdf(
+                emp,
+                late_emp_pdf,
+                abs_emp,
+                leave_emp,
+                lang="ar"
+            )
+            
+            pdf_en = build_pdf(
+                emp,
+                late_emp_pdf,
+                abs_emp,
+                leave_emp,
+                lang="en"
+            )
 
             st.session_state["pdf_bytes_ar"] = pdf_ar
             st.session_state["pdf_bytes_en"] = pdf_en
