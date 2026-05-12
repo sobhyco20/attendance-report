@@ -1116,23 +1116,13 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
                 le[c] = 0
 
         # =========================================
-         # =========================================
-        # حذف السبت لغير السعوديين
+        # =========================================
+        # حذف السبت لغير السعوديين فقط
         # =========================================
         
-        if (
-            "جمعة فقط" in schedule_name
-            or
-            "الجمعة فقط" in schedule_name
-        ):
-        
-            le = le[
-                le["weekday"] != "Saturday"
-            ].copy()
-        
-        # =========================================
-        # حذف الصفوف الفارغة
-        # =========================================
+        schedule_name = safe_str(
+            emp_row.get("schedule", "")
+        )
         
         for c in [
         
@@ -1146,28 +1136,34 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         
                 le[c] = 0
         
-        le = le[
+        if (
+            "جمعة فقط" in schedule_name
+            or
+            "الجمعة فقط" in schedule_name
+        ):
         
-            (
-                le["late_minutes"].fillna(0) > 0
-            )
-        
-            |
-        
-            (
-                le["early_leave_minutes"].fillna(0) > 0
-            )
-        
-            |
-        
-            (
-                le["overtime_minutes"].fillna(0) > 0
-            )
-        
-        ].copy()
+            le = le[
+                ~(
+                    (le["weekday"] == "Saturday")
+                    &
+                    (
+                        (
+                            le["late_minutes"].fillna(0) > 0
+                        )
+                        |
+                        (
+                            le["early_leave_minutes"].fillna(0) > 0
+                        )
+                        |
+                        (
+                            le["overtime_minutes"].fillna(0) > 0
+                        )
+                    )
+                )
+            ].copy()
         
         # =========================================
-        # الإجماليات من نفس الجدول الظاهر فقط
+        # الإجماليات من الجدول الفعلي
         # =========================================
         
         total_late = int(
@@ -1201,8 +1197,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
             total_late
             +
             total_early_leave
-        )
-        if lang == "ar":
+        )        if lang == "ar":
 
             story.append(
                 Paragraph(
