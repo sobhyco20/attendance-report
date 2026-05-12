@@ -758,6 +758,25 @@ def process_attendance(
                     return 0
             emp_df["late_minutes"] = emp_df.apply(calc_late, axis=1)
             emp_df["early_leave_minutes"] = emp_df.apply(calc_early_leave, axis=1)
+            # =========================================
+            # تصفير السبت نهائياً لغير السعوديين
+            # =========================================
+            
+            if not is_saudi:
+            
+                sat_mask = (
+                    emp_df["weekday"] == "Saturday"
+                )
+            
+                emp_df.loc[
+                    sat_mask,
+                    "late_minutes"
+                ] = 0
+            
+                emp_df.loc[
+                    sat_mask,
+                    "early_leave_minutes"
+                ] = 0
 
             detail_rows = emp_df[(emp_df["late_minutes"] > 0) | (emp_df["early_leave_minutes"] > 0)].copy()
             if "date" in detail_rows.columns:
@@ -802,10 +821,46 @@ def process_attendance(
                     "period_to": date_max.date(),
                     "absent_days": len(absent_days),
                     "approved_leave_days": len(leave_dates),
-                    "late_days": int((emp_df["late_minutes"] > 0).sum()),
-                    "total_late_minutes": int(emp_df["late_minutes"].sum()),
-                    "early_leave_days": int((emp_df["early_leave_minutes"] > 0).sum()),
-                    "total_early_leave_minutes": int(emp_df["early_leave_minutes"].sum()),
+                    "late_days": int(
+
+                        (
+                            (emp_df["late_minutes"] > 0)
+                    
+                            &
+                    
+                            ~(emp_df["weekday"] == "Saturday")
+                    
+                        ).sum()
+                    
+                    ),
+                    "total_late_minutes": int(
+
+                        emp_df.loc[
+                            emp_df["weekday"] != "Saturday",
+                            "late_minutes"
+                        ].sum()
+                    
+                    ),
+                    "early_leave_days": int(
+                    
+                        (
+                            (emp_df["early_leave_minutes"] > 0)
+                    
+                            &
+                    
+                            ~(emp_df["weekday"] == "Saturday")
+                    
+                        ).sum()
+                    
+                    ),
+                "total_early_leave_minutes": int(
+                
+                    emp_df.loc[
+                        emp_df["weekday"] != "Saturday",
+                        "early_leave_minutes"
+                    ].sum()
+                
+                ),
                     "attendance_calculation": "",
                     "total_overtime_minutes": 0,
                 }
