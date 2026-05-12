@@ -1001,42 +1001,76 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         story.append(Spacer(1, 8))
         
         # =====================================================
-        # إعادة احتساب الإجماليات من الجدول نفسه
-        # لاستبعاد السبت نهائياً
+
+                
+        # =====================================================
+        # الإجماليات من الجدول المعروض فعلياً فقط
         # =====================================================
         
-        pdf_df = le.copy()
+        for c in [
         
-        schedule_name = safe_str(
-            emp_row.get("schedule", "")
-        )
+            "late_minutes",
+            "early_leave_minutes",
+            "overtime_minutes"
         
-        if (
-            "جمعة فقط" in schedule_name
-            or
-            "الجمعة فقط" in schedule_name
-        ):
+        ]:
         
-            pdf_df = pdf_df[
-                pdf_df["weekday"] != "Saturday"
-            ].copy()
+            if c not in le.columns:
+        
+                le[c] = 0
+        
+        # =========================================
+        # الجدول النهائي الظاهر في PDF فقط
+        # =========================================
+        
+        visible_df = le.copy()
+        
+        # =========================================
+        # الإجماليات الحقيقية
+        # =========================================
         
         total_late = int(
-            pdf_df["late_minutes"].fillna(0).sum()
+        
+            visible_df["late_minutes"]
+        
+            .fillna(0)
+        
+            .astype(float)
+        
+            .sum()
+        
         )
         
         total_early_leave = int(
-            pdf_df["early_leave_minutes"].fillna(0).sum()
+        
+            visible_df["early_leave_minutes"]
+        
+            .fillna(0)
+        
+            .astype(float)
+        
+            .sum()
+        
         )
         
         total_overtime = int(
-            pdf_df["overtime_minutes"].fillna(0).sum()
+        
+            visible_df["overtime_minutes"]
+        
+            .fillna(0)
+        
+            .astype(float)
+        
+            .sum()
+        
         )
         
         total_deduction = (
+        
             total_late
             +
             total_early_leave
+        
         )
 
         if lang == "ar":
