@@ -801,6 +801,23 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         story.append(Paragraph(txt(t("لا يوجد بيانات", "No records", lang)), p_style))
     else:
         le = late_emp.copy()
+        # =====================================================
+        # حذف السبت نهائياً من PDF لغير السعوديين
+        # =====================================================
+        
+        schedule_name = safe_str(
+            emp_row.get("schedule", "")
+        )
+        
+        if (
+            "جمعة فقط" in schedule_name
+            or
+            "الجمعة فقط" in schedule_name
+        ):
+        
+            le = le[
+                le["weekday"] != "Saturday"
+            ].copy()
         if "date" in le.columns:
             le = le.sort_values("date")
             le["date"] = le["date"].apply(fmt_date)
@@ -868,37 +885,6 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
                     emp_row.get("schedule", "")
                 )
 
-                # =====================================================
-                # السبت لغير السعوديين = 3 ساعات فقط
-                # =====================================================
-                
-                # =====================================================
-                # السبت لغير السعوديين
-                # حضور وانصراف فقط
-                # لا تأخير
-                # لا خروج مبكر
-                # لا إضافي
-                # =====================================================
-                
-                if (
-                
-                    weekday_name == "Saturday"
-                
-                    and
-                
-                    (
-                        "جمعة فقط" in schedule_name
-                        or
-                        "الجمعة فقط" in schedule_name
-                    )
-                
-                ):
-                
-                    late_minutes = 0
-                
-                    early_leave_minutes = 0
-                
-                    overtime_minutes = 0
 
                 row = [
 
