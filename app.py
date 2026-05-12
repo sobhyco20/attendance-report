@@ -633,18 +633,27 @@ def expand_leave_days(leaves_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp: pd.DataFrame | None = None, lang: str = "ar") -> bytes:
+
     FONT_EN = "Helvetica"
     FONT_AR_NAME = "AR"
 
     if not os.path.exists(FONT_PATH):
         raise FileNotFoundError(f"Arabic font not found: {FONT_PATH}")
+
     try:
-        pdfmetrics.registerFont(TTFont(FONT_AR_NAME, FONT_PATH))
+        pdfmetrics.registerFont(
+            TTFont(FONT_AR_NAME, FONT_PATH)
+        )
     except Exception:
         pass
 
-    font_main = FONT_AR_NAME if lang == "ar" else FONT_EN
+    font_main = (
+        FONT_AR_NAME
+        if lang == "ar"
+        else FONT_EN
+    )
 
     align_text = 2 if lang == "ar" else 0
     align_head = 2 if lang == "ar" else 0
@@ -655,14 +664,27 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
 
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle("title", parent=styles["Title"], fontName=font_main, fontSize=15, alignment=1)
-    name_style = ParagraphStyle("name", parent=styles["BodyText"], fontName=font_main, fontSize=12, alignment=1, leading=16)
+    title_style = ParagraphStyle(
+        "title",
+        parent=styles["Title"],
+        fontName=font_main,
+        fontSize=15,
+        alignment=1
+    )
 
-    info_font = font_main if lang == "ar" else FONT_EN
+    name_style = ParagraphStyle(
+        "name",
+        parent=styles["BodyText"],
+        fontName=font_main,
+        fontSize=12,
+        alignment=1,
+        leading=16
+    )
+
     info_style = ParagraphStyle(
         "info",
         parent=styles["BodyText"],
-        fontName=info_font,
+        fontName=font_main if lang == "ar" else FONT_EN,
         fontSize=10,
         alignment=1,
         textColor=colors.grey,
@@ -681,11 +703,35 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         spaceAfter=6,
     )
 
-    h_style = ParagraphStyle("h", parent=title_style, fontName=font_main, fontSize=12, alignment=align_head, spaceAfter=6)
-    p_style = ParagraphStyle("p", parent=styles["BodyText"], fontName=font_main, fontSize=10.5, alignment=align_text, leading=15)
-    total_style = ParagraphStyle("total", parent=p_style, fontName=font_main, fontSize=12.0, alignment=align_text, leading=18)
+    h_style = ParagraphStyle(
+        "h",
+        parent=title_style,
+        fontName=font_main,
+        fontSize=12,
+        alignment=align_head,
+        spaceAfter=6
+    )
+
+    p_style = ParagraphStyle(
+        "p",
+        parent=styles["BodyText"],
+        fontName=font_main,
+        fontSize=10.5,
+        alignment=align_text,
+        leading=15
+    )
+
+    total_style = ParagraphStyle(
+        "total",
+        parent=p_style,
+        fontName=font_main,
+        fontSize=12,
+        alignment=align_text,
+        leading=18
+    )
 
     buf = BytesIO()
+
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
@@ -695,254 +741,465 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         bottomMargin=1.0 * cm,
     )
 
-    name_ar_ = safe_str(emp_row.get("name_ar", ""))
-    name_en_ = safe_str(emp_row.get("name_en", ""))
-    nat = safe_str(emp_row.get("nationality", emp_row.get("nationality_raw", "")))
-    emp_no = safe_str(emp_row.get("employee_no", ""))
-    dept = safe_str(emp_row.get("department", ""))
-    job = safe_str(emp_row.get("job_title", ""))
+    name_ar_ = safe_str(
+        emp_row.get("name_ar", "")
+    )
 
-    title = month_year_title(emp_row) if lang == "ar" else month_year_title_en(emp_row)
-    attendance_rule = safe_str(emp_row.get("attendance_calculation", "")).strip().lower()
+    name_en_ = safe_str(
+        emp_row.get("name_en", "")
+    )
+
+    nat = safe_str(
+        emp_row.get(
+            "nationality",
+            emp_row.get("nationality_raw", "")
+        )
+    )
+
+    emp_no = safe_str(
+        emp_row.get("employee_no", "")
+    )
+
+    dept = safe_str(
+        emp_row.get("department", "")
+    )
+
+    job = safe_str(
+        emp_row.get("job_title", "")
+    )
+
+    title = (
+        month_year_title(emp_row)
+        if lang == "ar"
+        else month_year_title_en(emp_row)
+    )
+
+    attendance_rule = safe_str(
+        emp_row.get(
+            "attendance_calculation",
+            ""
+        )
+    ).strip().lower()
 
     if lang == "ar":
+
         info_parts = []
+
         if emp_no:
-            info_parts.append(f"الكود/الرقم: {emp_no}")
+            info_parts.append(
+                f"الكود/الرقم: {emp_no}"
+            )
+
         if job:
-            info_parts.append(f"الوظيفة: {job}")
+            info_parts.append(
+                f"الوظيفة: {job}"
+            )
+
         if dept:
-            info_parts.append(f"الإدارة: {dept}")
+            info_parts.append(
+                f"الإدارة: {dept}"
+            )
+
         if nat:
-            info_parts.append(f"الجنسية: {nat}")
-        info_line = ar(" | ".join(info_parts))
+            info_parts.append(
+                f"الجنسية: {nat}"
+            )
+
+        info_line = ar(
+            " | ".join(info_parts)
+        )
+
     else:
+
         parts = []
+
         if emp_no:
-            parts.append(escape(f"Employee No: {emp_no}"))
+            parts.append(
+                escape(
+                    f"Employee No: {emp_no}"
+                )
+            )
+
         if job:
-            parts.append(f"Job Title: <font name='AR'>{ar(job)}</font>" if AR_CHARS.search(job) else escape(f"Job Title: {job}"))
+
+            parts.append(
+
+                f"Job Title: <font name='AR'>{ar(job)}</font>"
+
+                if AR_CHARS.search(job)
+
+                else escape(
+                    f"Job Title: {job}"
+                )
+
+            )
+
         if dept:
-            parts.append(f"Department: <font name='AR'>{ar(dept)}</font>" if AR_CHARS.search(dept) else escape(f"Department: {dept}"))
+
+            parts.append(
+
+                f"Department: <font name='AR'>{ar(dept)}</font>"
+
+                if AR_CHARS.search(dept)
+
+                else escape(
+                    f"Department: {dept}"
+                )
+
+            )
+
         if nat:
-            parts.append(f"Nationality: <font name='AR'>{ar(nat)}</font>" if AR_CHARS.search(nat) else escape(f"Nationality: {nat}"))
+
+            parts.append(
+
+                f"Nationality: <font name='AR'>{ar(nat)}</font>"
+
+                if AR_CHARS.search(nat)
+
+                else escape(
+                    f"Nationality: {nat}"
+                )
+
+            )
+
         info_line = " | ".join(parts)
 
     def on_first_page(canvas, _doc):
+
         canvas.saveState()
+
         W, H = A4
+
         if os.path.exists(LOGO_PATH):
+
             try:
+
                 img = ImageReader(LOGO_PATH)
+
                 w = 3.0 * cm
                 h = 1.4 * cm
+
                 x = W - _doc.rightMargin - w
-                y = H - _doc.topMargin - h + 0.2 * cm
-                canvas.drawImage(img, x, y, width=w, height=h, mask="auto")
+
+                y = (
+                    H
+                    -
+                    _doc.topMargin
+                    -
+                    h
+                    +
+                    0.2 * cm
+                )
+
+                canvas.drawImage(
+                    img,
+                    x,
+                    y,
+                    width=w,
+                    height=h,
+                    mask="auto"
+                )
+
             except Exception:
                 pass
+
         canvas.restoreState()
 
     def fmt_time(x):
+
         try:
-            tt = pd.to_datetime(str(x), errors="coerce")
-            return "" if pd.isna(tt) else tt.strftime("%H:%M")
+
+            tt = pd.to_datetime(
+                str(x),
+                errors="coerce"
+            )
+
+            return (
+                ""
+                if pd.isna(tt)
+                else tt.strftime("%H:%M")
+            )
+
         except Exception:
+
             return ""
 
     def rtl_row(row):
-        return list(reversed(row)) if lang == "ar" else row
+
+        return (
+            list(reversed(row))
+            if lang == "ar"
+            else row
+        )
 
     def rtl_cols(widths):
-        return list(reversed(widths)) if lang == "ar" else widths
+
+        return (
+            list(reversed(widths))
+            if lang == "ar"
+            else widths
+        )
 
     if lang == "ar":
-        name_line = f"{name_ar_} — {name_en_}" if name_en_ else name_ar_
-        name_paragraph = Paragraph(ar(name_line), name_style)
+
+        name_line = (
+
+            f"{name_ar_} — {name_en_}"
+
+            if name_en_
+
+            else name_ar_
+
+        )
+
+        name_paragraph = Paragraph(
+            ar(name_line),
+            name_style
+        )
+
     else:
+
         en_part = escape(name_en_ or "")
         ar_part = ar(name_ar_) if name_ar_ else ""
+
         if en_part and ar_part:
-            mixed = f"{en_part} — <font name='AR'>{ar_part}</font>"
+
+            mixed = (
+                f"{en_part} — "
+                f"<font name='AR'>{ar_part}</font>"
+            )
+
         elif en_part:
+
             mixed = en_part
+
         else:
-            mixed = f"<font name='AR'>{ar_part}</font>"
-        name_paragraph = Paragraph(mixed, name_style)
+
+            mixed = (
+                f"<font name='AR'>{ar_part}</font>"
+            )
+
+        name_paragraph = Paragraph(
+            mixed,
+            name_style
+        )
 
     story = []
-    story.append(Paragraph(txt(title), title_style))
-    story.append(name_paragraph)
-    story.append(Paragraph(info_line, info_style))
-    story.append(Spacer(1, 6))
+
+    story.append(
+        Paragraph(
+            txt(title),
+            title_style
+        )
+    )
+
+    story.append(
+        name_paragraph
+    )
+
+    story.append(
+        Paragraph(
+            info_line,
+            info_style
+        )
+    )
+
+    story.append(
+        Spacer(1, 6)
+    )
 
     if attendance_rule == "daily_hours":
-        if lang == "ar":
-            note = "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام، والإضافي بعد نهاية الدوام."
-            story.append(Paragraph(ar(note), note_style))
-        else:
-            note = "📝 Note: Late is calculated after shift start with grace, early leave before shift end, and overtime after shift end."
-            story.append(Paragraph(note, note_style))
+
+        note = (
+
+            "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام، والإضافي بعد نهاية الدوام."
+
+            if lang == "ar"
+
+            else
+
+            "📝 Note: Late is calculated after shift start with grace, early leave before shift end, and overtime after shift end."
+
+        )
+
     else:
-        if lang == "ar":
-            note = "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام المحددة."
-            story.append(Paragraph(ar(note), note_style))
-        else:
-            note = "📝 Note: Late is calculated after shift start with grace, and early leave before official shift end."
-            story.append(Paragraph(note, note_style))
 
-    story.append(HRFlowable(width="100%", thickness=0.6, color=colors.lightgrey))
-    story.append(Spacer(1, 8))
+        note = (
 
-    section_title = "التأخير والخروج المبكر والإضافي" if lang == "ar" else "Late / Early Leave / Overtime"
-    story.append(Paragraph(txt(section_title), h_style))
+            "📝 ملاحظة: يتم احتساب التأخير بعد بداية الدوام مع السماح، والخروج المبكر قبل نهاية الدوام المحددة."
+
+            if lang == "ar"
+
+            else
+
+            "📝 Note: Late is calculated after shift start with grace, and early leave before official shift end."
+
+        )
+
+    story.append(
+        Paragraph(
+            ar(note) if lang == "ar" else note,
+            note_style
+        )
+    )
+
+    story.append(
+        HRFlowable(
+            width="100%",
+            thickness=0.6,
+            color=colors.lightgrey
+        )
+    )
+
+    story.append(
+        Spacer(1, 8)
+    )
+
+    section_title = (
+
+        "التأخير والخروج المبكر والإضافي"
+
+        if lang == "ar"
+
+        else
+
+        "Late / Early Leave / Overtime"
+
+    )
+
+    story.append(
+        Paragraph(
+            txt(section_title),
+            h_style
+        )
+    )
 
     if late_emp is None or late_emp.empty:
-        story.append(Paragraph(txt(t("لا يوجد بيانات", "No records", lang)), p_style))
+
+        story.append(
+
+            Paragraph(
+
+                txt(
+                    t(
+                        "لا يوجد بيانات",
+                        "No records",
+                        lang
+                    )
+                ),
+
+                p_style
+
+            )
+
+        )
+
     else:
+
         le = late_emp.copy()
 
-        # =====================================================
-        # نفس البيانات الظاهرة على الشاشة فقط
-        # =====================================================
-        
+        # =========================================
+        # تجهيز الأعمدة
+        # =========================================
+
         for c in [
-        
+
             "late_minutes",
             "early_leave_minutes",
-            "overtime_minutes"
-        
+            "overtime_minutes",
+            "worked_minutes"
+
         ]:
-        
+
             if c not in le.columns:
-        
+
                 le[c] = 0
-        
+
         # =========================================
         # حذف السبت لغير السعوديين
         # =========================================
-        
+
         schedule_name = safe_str(
             emp_row.get("schedule", "")
         )
-        
+
         if (
             "جمعة فقط" in schedule_name
             or
             "الجمعة فقط" in schedule_name
         ):
-        
+
             le = le[
                 le["weekday"] != "Saturday"
             ].copy()
-        
+
         # =========================================
         # حذف الصفوف الفارغة
         # =========================================
-        
+
         le = le[
-        
+
             (
                 le["late_minutes"].fillna(0) > 0
             )
-        
+
             |
-        
+
             (
                 le["early_leave_minutes"].fillna(0) > 0
             )
-        
+
             |
-        
+
             (
                 le["overtime_minutes"].fillna(0) > 0
             )
-        
-        ].copy()
-        # =====================================================
-        # حذف السبت نهائياً من PDF لغير السعوديين
-        # =====================================================
-        
-        schedule_name = safe_str(
-            emp_row.get("schedule", "")
-        )
-        
-        if (
-            "جمعة فقط" in schedule_name
-            or
-            "الجمعة فقط" in schedule_name
-        ):
-        
-            le = le[
-                le["weekday"] != "Saturday"
-            ].copy()
-        if "date" in le.columns:
-            le = le.sort_values("date")
-            le["date"] = le["date"].apply(fmt_date)
 
-        if "worked_minutes" not in le.columns:
-            le["worked_minutes"] = 0
-        if "overtime_minutes" not in le.columns:
-            le["overtime_minutes"] = 0
-        if "early_leave_minutes" not in le.columns:
-            le["early_leave_minutes"] = 0
+        ].copy()
+
+        if "date" in le.columns:
+
+            le = le.sort_values("date")
+
+            le["date"] = le["date"].apply(
+                fmt_date
+            )
 
         if attendance_rule == "daily_hours":
 
             rows = [rtl_row([
 
-                txt(t("اليوم", "Day", lang)),
-                txt(t("التاريخ", "Date", lang)),
-                txt(t("أول بصمة", "First In", lang)),
-                txt(t("آخر بصمة", "Last Out", lang)),
-                txt(t("ساعات العمل", "Worked", lang)),
-                txt(t("التأخير", "Late", lang)),
-                txt(t("الخروج المبكر", "Early Leave", lang)),
-                txt(t("الإضافي", "Overtime", lang)),
+                txt("اليوم" if lang == "ar" else "Day"),
+                txt("التاريخ" if lang == "ar" else "Date"),
+                txt("أول بصمة" if lang == "ar" else "First In"),
+                txt("آخر بصمة" if lang == "ar" else "Last Out"),
+                txt("ساعات العمل" if lang == "ar" else "Worked"),
+                txt("التأخير" if lang == "ar" else "Late"),
+                txt("الخروج المبكر" if lang == "ar" else "Early Leave"),
+                txt("الإضافي" if lang == "ar" else "Overtime"),
 
             ])]
 
             for _, r in le.iterrows():
 
-                day_val = safe_str(
+                day_val = (
 
-                    r.get(
-                        "weekday_ar",
+                    safe_str(
+                        r.get(
+                            "weekday_ar",
+                            r.get("weekday", "")
+                        )
+                    )
+
+                    if lang == "ar"
+
+                    else
+
+                    safe_str(
                         r.get("weekday", "")
                     )
 
-                ) if lang == "ar" else safe_str(
-                    r.get("weekday", "")
                 )
-
-                # =====================================================
-                # القيم الأساسية
-                # =====================================================
-
-                worked_minutes = int(
-                    r.get("worked_minutes", 0) or 0
-                )
-
-                late_minutes = int(
-                    r.get("late_minutes", 0) or 0
-                )
-
-                early_leave_minutes = int(
-                    r.get("early_leave_minutes", 0) or 0
-                )
-
-                overtime_minutes = int(
-                    r.get("overtime_minutes", 0) or 0
-                )
-
-                weekday_name = safe_str(
-                    r.get("weekday", "")
-                )
-
-                schedule_name = safe_str(
-                    emp_row.get("schedule", "")
-                )
-
 
                 row = [
 
@@ -974,25 +1231,45 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
 
                     txt(
                         mm_to_hhmm(
-                            worked_minutes
+                            int(
+                                r.get(
+                                    "worked_minutes",
+                                    0
+                                ) or 0
+                            )
                         )
                     ),
 
                     txt(
                         mm_to_hhmm(
-                            late_minutes
+                            int(
+                                r.get(
+                                    "late_minutes",
+                                    0
+                                ) or 0
+                            )
                         )
                     ),
 
                     txt(
                         mm_to_hhmm(
-                            early_leave_minutes
+                            int(
+                                r.get(
+                                    "early_leave_minutes",
+                                    0
+                                ) or 0
+                            )
                         )
                     ),
 
                     txt(
                         mm_to_hhmm(
-                            overtime_minutes
+                            int(
+                                r.get(
+                                    "overtime_minutes",
+                                    0
+                                ) or 0
+                            )
                         )
                     ),
 
@@ -1015,38 +1292,116 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
 
             ])
 
-            t1 = Table(
-                rows,
-                colWidths=widths
-            )
         else:
+
             rows = [rtl_row([
-                txt(t("اليوم", "Day", lang)),
-                txt(t("التاريخ", "Date", lang)),
-                txt(t("أول بصمة", "First Punch", lang)),
-                txt(t("آخر بصمة", "Last Punch", lang)),
-                txt(t("التأخير", "Late", lang)),
-                txt(t("الخروج المبكر", "Early Leave", lang)),
+
+                txt("اليوم" if lang == "ar" else "Day"),
+                txt("التاريخ" if lang == "ar" else "Date"),
+                txt("أول بصمة" if lang == "ar" else "First Punch"),
+                txt("آخر بصمة" if lang == "ar" else "Last Punch"),
+                txt("التأخير" if lang == "ar" else "Late"),
+                txt("الخروج المبكر" if lang == "ar" else "Early Leave"),
+
             ])]
 
             for _, r in le.iterrows():
-                day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
-                row = [
-                    txt(day_val),
-                    txt(safe_str(r.get("date", ""))),
-                    txt(fmt_time(r.get("first_punch_time", ""))),
-                    txt(fmt_time(r.get("last_punch_time", ""))),
-                    txt(mm_to_hhmm(int(r.get("late_minutes", 0) or 0))),
-                    txt(mm_to_hhmm(int(r.get("early_leave_minutes", 0) or 0))),
-                ]
-                rows.append(rtl_row(row))
 
-            widths = rtl_cols([3.0*cm, 3.2*cm, 2.8*cm, 2.8*cm, 2.8*cm, 3.0*cm])
-            t1 = Table(rows, colWidths=widths)
+                day_val = (
+
+                    safe_str(
+                        r.get(
+                            "weekday_ar",
+                            r.get("weekday", "")
+                        )
+                    )
+
+                    if lang == "ar"
+
+                    else
+
+                    safe_str(
+                        r.get("weekday", "")
+                    )
+
+                )
+
+                row = [
+
+                    txt(day_val),
+
+                    txt(
+                        safe_str(
+                            r.get("date", "")
+                        )
+                    ),
+
+                    txt(
+                        fmt_time(
+                            r.get(
+                                "first_punch_time",
+                                ""
+                            )
+                        )
+                    ),
+
+                    txt(
+                        fmt_time(
+                            r.get(
+                                "last_punch_time",
+                                ""
+                            )
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            int(
+                                r.get(
+                                    "late_minutes",
+                                    0
+                                ) or 0
+                            )
+                        )
+                    ),
+
+                    txt(
+                        mm_to_hhmm(
+                            int(
+                                r.get(
+                                    "early_leave_minutes",
+                                    0
+                                ) or 0
+                            )
+                        )
+                    ),
+
+                ]
+
+                rows.append(
+                    rtl_row(row)
+                )
+
+            widths = rtl_cols([
+
+                3.0 * cm,
+                3.2 * cm,
+                2.8 * cm,
+                2.8 * cm,
+                2.8 * cm,
+                3.0 * cm
+
+            ])
+
+        t1 = Table(
+            rows,
+            colWidths=widths
+        )
 
         t1.setStyle(TableStyle([
+
             ("FONTNAME", (0, 0), (-1, -1), font_main),
-            ("FONTSIZE", (0, 0), (-1, 0), 10.0),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
             ("FONTSIZE", (0, 1), (-1, -1), 9.2),
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
@@ -1054,201 +1409,197 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.append(t1)
-        story.append(Spacer(1, 8))
-        
-        # =====================================================
 
-                
-        # =====================================================
-        # الإجماليات من الجدول المعروض فعلياً فقط
-        # =====================================================
-        
-        for c in [
-        
-            "late_minutes",
-            "early_leave_minutes",
-            "overtime_minutes"
-        
-        ]:
-        
-            if c not in le.columns:
-        
-                le[c] = 0
-        
+        ]))
+
+        story.append(t1)
+
+        story.append(
+            Spacer(1, 8)
+        )
+
         # =========================================
-        # الجدول النهائي الظاهر في PDF فقط
+        # الإجماليات من نفس الجدول الظاهر
         # =========================================
-        
-        visible_df = le.copy()
-        
-        # =========================================
-        # الإجماليات الحقيقية
-        # =========================================
-        
+
         total_late = int(
-        
-            visible_df["late_minutes"]
-        
+            le["late_minutes"]
             .fillna(0)
-        
             .astype(float)
-        
             .sum()
-        
         )
-        
+
         total_early_leave = int(
-        
-            visible_df["early_leave_minutes"]
-        
+            le["early_leave_minutes"]
             .fillna(0)
-        
             .astype(float)
-        
             .sum()
-        
         )
-        
+
         total_overtime = int(
-        
-            visible_df["overtime_minutes"]
-        
+            le["overtime_minutes"]
             .fillna(0)
-        
             .astype(float)
-        
             .sum()
-        
         )
-        
+
         total_deduction = (
-        
             total_late
             +
             total_early_leave
-        
         )
 
         if lang == "ar":
-            story.append(Paragraph(ar(f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"), total_style))
-            story.append(Paragraph(ar(f"🚪 إجمالي الخروج المبكر: {mm_to_ar_hm(total_early_leave)}"), total_style))
+
+            story.append(
+                Paragraph(
+                    ar(
+                        f"⏱ إجمالي التأخير: {mm_to_ar_hm(total_late)}"
+                    ),
+                    total_style
+                )
+            )
+
+            story.append(
+                Paragraph(
+                    ar(
+                        f"🚪 إجمالي الخروج المبكر: {mm_to_ar_hm(total_early_leave)}"
+                    ),
+                    total_style
+                )
+            )
 
             if attendance_rule == "daily_hours":
-                story.append(Paragraph(ar(f"⬆️ إجمالي الإضافي: {mm_to_ar_hm(total_overtime)}"), total_style))
-                net_minutes = total_overtime - total_deduction
+
+                story.append(
+                    Paragraph(
+                        ar(
+                            f"⬆️ إجمالي الإضافي: {mm_to_ar_hm(total_overtime)}"
+                        ),
+                        total_style
+                    )
+                )
+
+                net_minutes = (
+                    total_overtime
+                    -
+                    total_deduction
+                )
+
                 if net_minutes > 0:
-                    net_line = f"✅ الصافي النهائي: إضافي {mm_to_ar_hm(net_minutes)}"
+
+                    net_line = (
+                        f"✅ الصافي النهائي: إضافي "
+                        f"{mm_to_ar_hm(net_minutes)}"
+                    )
+
                 elif net_minutes < 0:
-                    net_line = f"❌ الصافي النهائي: عجز {mm_to_ar_hm(net_minutes)}"
+
+                    net_line = (
+                        f"❌ الصافي النهائي: عجز "
+                        f"{mm_to_ar_hm(net_minutes)}"
+                    )
+
                 else:
-                    net_line = "➖ الصافي النهائي: متعادل (0 دقيقة)"
-                story.append(Paragraph(ar(net_line), total_style))
+
+                    net_line = (
+                        "➖ الصافي النهائي: "
+                        "متعادل (0 دقيقة)"
+                    )
+
+                story.append(
+                    Paragraph(
+                        ar(net_line),
+                        total_style
+                    )
+                )
+
             else:
-                story.append(Paragraph(ar(f"📌 إجمالي التأخير + الخروج المبكر: {mm_to_ar_hm(total_deduction)}"), total_style))
+
+                story.append(
+                    Paragraph(
+                        ar(
+                            f"📌 إجمالي التأخير + الخروج المبكر: "
+                            f"{mm_to_ar_hm(total_deduction)}"
+                        ),
+                        total_style
+                    )
+                )
+
         else:
-            story.append(Paragraph(f"Total Late: {mm_to_hhmm(total_late)}", total_style))
-            story.append(Paragraph(f"Total Early Leave: {mm_to_hhmm(total_early_leave)}", total_style))
+
+            story.append(
+                Paragraph(
+                    f"Total Late: {mm_to_hhmm(total_late)}",
+                    total_style
+                )
+            )
+
+            story.append(
+                Paragraph(
+                    f"Total Early Leave: {mm_to_hhmm(total_early_leave)}",
+                    total_style
+                )
+            )
+
             if attendance_rule == "daily_hours":
-                story.append(Paragraph(f"Total Overtime: {mm_to_hhmm(total_overtime)}", total_style))
-                net_minutes = total_overtime - total_deduction
+
+                story.append(
+                    Paragraph(
+                        f"Total Overtime: {mm_to_hhmm(total_overtime)}",
+                        total_style
+                    )
+                )
+
+                net_minutes = (
+                    total_overtime
+                    -
+                    total_deduction
+                )
+
                 if net_minutes > 0:
-                    net_line = f"Final Net: Overtime {mm_to_hhmm(net_minutes)}"
+
+                    net_line = (
+                        f"Final Net: Overtime "
+                        f"{mm_to_hhmm(net_minutes)}"
+                    )
+
                 elif net_minutes < 0:
-                    net_line = f"Final Net: Deficit {mm_to_hhmm(net_minutes)}"
+
+                    net_line = (
+                        f"Final Net: Deficit "
+                        f"{mm_to_hhmm(net_minutes)}"
+                    )
+
                 else:
-                    net_line = "Final Net: Balanced (0m)"
-                story.append(Paragraph(net_line, total_style))
+
+                    net_line = (
+                        "Final Net: Balanced (0m)"
+                    )
+
+                story.append(
+                    Paragraph(
+                        net_line,
+                        total_style
+                    )
+                )
+
             else:
-                story.append(Paragraph(f"Total Late + Early Leave: {mm_to_hhmm(total_deduction)}", total_style))
 
-    story.append(Spacer(1, 12))
+                story.append(
+                    Paragraph(
+                        f"Total Late + Early Leave: "
+                        f"{mm_to_hhmm(total_deduction)}",
+                        total_style
+                    )
+                )
 
-    story.append(Paragraph(txt(t("الغياب", "Absence", lang)), h_style))
-    if abs_emp is None or abs_emp.empty:
-        story.append(Paragraph(txt(t("لا يوجد غياب", "No absence records", lang)), p_style))
-    else:
-        ae = abs_emp.copy().sort_values("date") if "date" in abs_emp.columns else abs_emp.copy()
-        if "date" in ae.columns:
-            ae["date"] = ae["date"].apply(fmt_date)
+    doc.build(
+        story,
+        onFirstPage=on_first_page
+    )
 
-        rows2 = [rtl_row([
-            txt(t("اليوم", "Day", lang)),
-            txt(t("التاريخ", "Date", lang)),
-        ])]
-
-        for _, r in ae.iterrows():
-            day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
-            row = [txt(day_val), txt(safe_str(r.get("date", "")))]
-            rows2.append(rtl_row(row))
-
-        t2 = Table(rows2, colWidths=rtl_cols([6.0 * cm, 9.5 * cm]))
-        t2.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), font_main),
-            ("FONTSIZE", (0, 0), (-1, 0), 11),
-            ("FONTSIZE", (0, 1), (-1, -1), 10),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.append(t2)
-        story.append(Spacer(1, 6))
-
-        absent_days = int(emp_row.get("absent_days", 0) or 0)
-        story.append(Paragraph(txt(t(f"🚫 عدد أيام الغياب: {absent_days}", f"🚫 Total Absent Days: {absent_days}", lang)), total_style))
-
-    story.append(Spacer(1, 12))
-    story.append(Paragraph(txt(t("الإجازات المعتمدة", "Approved Leaves", lang)), h_style))
-    if leave_emp is None or leave_emp.empty:
-        story.append(Paragraph(txt(t("لا توجد إجازات معتمدة", "No approved leaves", lang)), p_style))
-    else:
-        lv = leave_emp.copy().sort_values("date") if "date" in leave_emp.columns else leave_emp.copy()
-        if "date" in lv.columns:
-            lv["date"] = lv["date"].apply(fmt_date)
-        rows3 = [rtl_row([
-            txt(t("اليوم", "Day", lang)),
-            txt(t("التاريخ", "Date", lang)),
-            txt(t("نوع الإجازة", "Leave Type", lang)),
-        ])]
-        for _, r in lv.iterrows():
-            day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
-            rows3.append(rtl_row([
-                txt(day_val),
-                txt(safe_str(r.get("date", ""))),
-                txt(safe_str(r.get("leave_type", "إجازة"))),
-            ]))
-        t3 = Table(rows3, colWidths=rtl_cols([4.5 * cm, 4.5 * cm, 6.5 * cm]))
-        t3.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), font_main),
-            ("FONTSIZE", (0, 0), (-1, 0), 11),
-            ("FONTSIZE", (0, 1), (-1, -1), 10),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.append(t3)
-        story.append(Spacer(1, 6))
-        leave_days = int(emp_row.get("approved_leave_days", len(lv)) or 0)
-        story.append(Paragraph(txt(t(f"🏖️ عدد أيام الإجازات المعتمدة: {leave_days}", f"🏖️ Total Approved Leave Days: {leave_days}", lang)), total_style))
-
-    doc.build(story, onFirstPage=on_first_page)
     return buf.getvalue()
-
-
-
-
-
-
-
-
-
 
 # =========================
 # تشغيل المعالجة
