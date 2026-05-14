@@ -1086,381 +1086,500 @@ with st.sidebar:
 
 main_tab, leave_root_tab = st.tabs(["📊 تقرير البصمة", "🏖️ إدارة الإجازات"])
 
-
 def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
+
     buf = BytesIO()
+
     FONT_NAME = "AR_LEAVE"
 
     try:
-        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
+        pdfmetrics.registerFont(
+            TTFont(FONT_NAME, FONT_PATH)
+        )
     except Exception:
         pass
 
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        leftMargin=1.0 * cm,
-        rightMargin=1.0 * cm,
-        topMargin=1.0 * cm,
-        bottomMargin=1.0 * cm,
+        leftMargin=0.7 * cm,
+        rightMargin=0.7 * cm,
+        topMargin=0.7 * cm,
+        bottomMargin=0.7 * cm,
     )
 
     styles = getSampleStyleSheet()
 
+    # =====================================================
+    # STYLES
+    # =====================================================
+
     title_style = ParagraphStyle(
-        "leave_title",
+        "title",
         parent=styles["Title"],
         fontName=FONT_NAME,
-        fontSize=15,
+        fontSize=18,
         alignment=1,
-        leading=18,
-        spaceAfter=10,
-        textColor=colors.black,
+        textColor=colors.HexColor("#111827"),
+        leading=24,
+        spaceAfter=18,
     )
 
-    p_style = ParagraphStyle(
-        "leave_p",
+    employee_style = ParagraphStyle(
+        "employee_style",
         parent=styles["BodyText"],
         fontName=FONT_NAME,
-        fontSize=10.5,
+        fontSize=11,
         alignment=2,
-        leading=15,
-        wordWrap="RTL",
-        textColor=colors.black,
-    )
-
-    total_style = ParagraphStyle(
-        "leave_total",
-        parent=p_style,
-        fontName=FONT_NAME,
-        fontSize=11.5,
-        alignment=2,
-        leading=16,
-        spaceBefore=6,
-        wordWrap="RTL",
-        textColor=colors.black,
+        leading=18,
+        textColor=colors.white,
     )
 
     header_style = ParagraphStyle(
-        "leave_header",
+        "header_style",
         parent=styles["BodyText"],
         fontName=FONT_NAME,
         fontSize=10,
-        alignment=2,
-        leading=13,
-        wordWrap="RTL",
-        textColor=colors.black,
+        alignment=1,
+        textColor=colors.white,
+        leading=14,
     )
 
     cell_style = ParagraphStyle(
-        "leave_cell",
+        "cell_style",
         parent=styles["BodyText"],
         fontName=FONT_NAME,
-        fontSize=8.8,
-        alignment=2,
-        leading=11,
-        wordWrap="RTL",
+        fontSize=9,
+        alignment=1,
         textColor=colors.black,
-    )
-
-    attachment_style = ParagraphStyle(
-        "leave_attachment_cell",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=8.2,
-        alignment=2,
-        leading=10,
-        wordWrap="RTL",
-        splitLongWords=True,
-        textColor=colors.black,
+        leading=13,
     )
 
     notes_style = ParagraphStyle(
-        "leave_notes_cell",
+        "notes_style",
         parent=styles["BodyText"],
         fontName=FONT_NAME,
         fontSize=8.5,
         alignment=2,
-        leading=10.5,
-        wordWrap="RTL",
-        splitLongWords=True,
         textColor=colors.black,
+        leading=11,
+    )
+
+    total_style = ParagraphStyle(
+        "total_style",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=11,
+        alignment=2,
+        textColor=colors.HexColor("#111827"),
+        leading=16,
+        spaceBefore=12,
     )
 
     def rtl_row(row):
         return list(reversed(row))
 
-    def make_para(value, style):
-        text = safe_str(value)
-        if not text:
-            text = "—"
-        return Paragraph(ar(text), style)
+    # =====================================================
+    # بداية التقرير
+    # =====================================================
 
-    story = [
-        Paragraph(ar("تقرير الإجازات"), title_style),
-        Spacer(1, 8),
-    ]
+    story = []
+
+    story.append(
+        Paragraph(
+            ar("تقرير الإجازات"),
+            title_style
+        )
+    )
+
+    # =====================================================
+    # لا توجد بيانات
+    # =====================================================
 
     if leaves_df is None or leaves_df.empty:
-        story.append(Paragraph(ar("لا توجد إجازات ضمن الفترة المحددة"), p_style))
-        doc.build(story)
-        return buf.getvalue()
 
-    pdf_df = leaves_df.copy()
-    pdf_df["start_date"] = pd.to_datetime(pdf_df["start_date"], errors="coerce")
-    pdf_df["end_date"] = pd.to_datetime(pdf_df["end_date"], errors="coerce")
-
-    rows = [
-        rtl_row([
-            Paragraph(ar("الموظف"), header_style),
-            Paragraph(ar("الرقم"), header_style),
-            Paragraph(ar("نوع الإجازة"), header_style),
-            Paragraph(ar("من"), header_style),
-            Paragraph(ar("إلى"), header_style),
-            Paragraph(ar("المرفق"), header_style),
-            Paragraph(ar("ملاحظات"), header_style),
-        ])
-    ]
-
-    for _, r in pdf_df.iterrows():
-        employee_name = safe_str(r.get("name_ar", "")) or "—"
-        employee_no = safe_str(r.get("employee_no", "")) or "—"
-        leave_type = safe_str(r.get("leave_type", "")) or "—"
-        start_date = fmt_date(r.get("start_date"))
-        end_date = fmt_date(r.get("end_date"))
-        attachment_name = safe_str(r.get("attachment_name", "")) or "لا يوجد"
-        notes_text = safe_str(r.get("notes", "")) or "—"
-
-        rows.append(
-            rtl_row([
-                Paragraph(ar(employee_name), cell_style),
-                Paragraph(ar(employee_no), cell_style),
-                Paragraph(ar(leave_type), cell_style),
-                Paragraph(ar(start_date), cell_style),
-                Paragraph(ar(end_date), cell_style),
-                Paragraph(ar(attachment_name), attachment_style),
-                Paragraph(ar(notes_text), notes_style),
-            ])
+        story.append(
+            Paragraph(
+                ar("لا توجد بيانات"),
+                cell_style
+            )
         )
 
-    t_pdf = Table(
-        rows,
-        colWidths=[
-            3.6 * cm,  # ملاحظات
-            3.0 * cm,  # المرفق
-            2.2 * cm,  # إلى
-            2.2 * cm,  # من
-            2.8 * cm,  # نوع الإجازة
-            2.2 * cm,  # الرقم
-            3.5 * cm,  # الموظف
-        ],
-        repeatRows=1,
-    )
-
-    t_pdf.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]))
-
-    story.append(t_pdf)
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(ar(f"عدد السجلات: {len(pdf_df)}"), total_style))
-
-    doc.build(story)
-    return buf.getvalue()
-
-
-def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
-    buf = BytesIO()
-    FONT_NAME = "AR_LEAVE"
-
-    try:
-        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
-    except Exception:
-        pass
-
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=1.0 * cm,
-        rightMargin=1.0 * cm,
-        topMargin=1.0 * cm,
-        bottomMargin=1.0 * cm,
-    )
-
-    styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle(
-        "leave_title",
-        parent=styles["Title"],
-        fontName=FONT_NAME,
-        fontSize=15,
-        alignment=1,
-        leading=18,
-        spaceAfter=10,
-        textColor=colors.black,
-    )
-
-    p_style = ParagraphStyle(
-        "leave_p",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=10.5,
-        alignment=2,
-        leading=15,
-        wordWrap="RTL",
-        textColor=colors.black,
-    )
-
-    total_style = ParagraphStyle(
-        "leave_total",
-        parent=p_style,
-        fontName=FONT_NAME,
-        fontSize=11.5,
-        alignment=2,
-        leading=16,
-        spaceBefore=6,
-        wordWrap="RTL",
-        textColor=colors.black,
-    )
-
-    header_style = ParagraphStyle(
-        "leave_header",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=10,
-        alignment=2,
-        leading=13,
-        wordWrap="RTL",
-        textColor=colors.black,
-    )
-
-    cell_style = ParagraphStyle(
-        "leave_cell",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=8.8,
-        alignment=2,
-        leading=11,
-        wordWrap="RTL",
-        textColor=colors.black,
-    )
-
-    attachment_style = ParagraphStyle(
-        "leave_attachment_cell",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=8.2,
-        alignment=2,
-        leading=10,
-        wordWrap="RTL",
-        splitLongWords=True,
-        textColor=colors.black,
-    )
-
-    notes_style = ParagraphStyle(
-        "leave_notes_cell",
-        parent=styles["BodyText"],
-        fontName=FONT_NAME,
-        fontSize=8.5,
-        alignment=2,
-        leading=10.5,
-        wordWrap="RTL",
-        splitLongWords=True,
-        textColor=colors.black,
-    )
-
-    def rtl_row(row):
-        return list(reversed(row))
-
-    story = [
-        Paragraph(ar("تقرير الإجازات"), title_style),
-        Spacer(1, 8),
-    ]
-
-    if leaves_df is None or leaves_df.empty:
-        story.append(Paragraph(ar("لا توجد إجازات ضمن الفترة المحددة"), p_style))
         doc.build(story)
+
         return buf.getvalue()
 
+    # =====================================================
+    # تجهيز البيانات
+    # =====================================================
+
     pdf_df = leaves_df.copy()
-    pdf_df["start_date"] = pd.to_datetime(pdf_df["start_date"], errors="coerce")
-    pdf_df["end_date"] = pd.to_datetime(pdf_df["end_date"], errors="coerce")
 
-    rows = [
-        rtl_row([
-            Paragraph(ar("الموظف"), header_style),
-            Paragraph(ar("الرقم"), header_style),
-            Paragraph(ar("نوع الإجازة"), header_style),
-            Paragraph(ar("من"), header_style),
-            Paragraph(ar("إلى"), header_style),
-            Paragraph(ar("المرفق"), header_style),
-            Paragraph(ar("ملاحظات"), header_style),
-        ])
-    ]
-
-    for _, r in pdf_df.iterrows():
-        employee_name = safe_str(r.get("name_ar", "")) or "—"
-        employee_no = safe_str(r.get("employee_no", "")) or "—"
-        leave_type = safe_str(r.get("leave_type", "")) or "—"
-        start_date = fmt_date(r.get("start_date"))
-        end_date = fmt_date(r.get("end_date"))
-        attachment_name = safe_str(r.get("attachment_name", "")) or "لا يوجد"
-        notes_text = safe_str(r.get("notes", "")) or "—"
-
-        rows.append(
-            rtl_row([
-                Paragraph(ar(employee_name), cell_style),
-                Paragraph(ar(employee_no), cell_style),
-                Paragraph(ar(leave_type), cell_style),
-                Paragraph(ar(start_date), cell_style),
-                Paragraph(ar(end_date), cell_style),
-                Paragraph(ar(attachment_name), attachment_style),
-                Paragraph(ar(notes_text), notes_style),
-            ])
-        )
-
-    t_pdf = Table(
-        rows,
-        colWidths=[
-            3.6 * cm,
-            3.0 * cm,
-            2.2 * cm,
-            2.2 * cm,
-            2.8 * cm,
-            2.2 * cm,
-            3.5 * cm,
-        ],
-        repeatRows=1,
+    pdf_df["start_date"] = pd.to_datetime(
+        pdf_df["start_date"],
+        errors="coerce"
     )
 
-    t_pdf.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    pdf_df["end_date"] = pd.to_datetime(
+        pdf_df["end_date"],
+        errors="coerce"
+    )
+
+    grouped = pdf_df.groupby(
+        ["employee_id", "employee_no", "name_ar"],
+        dropna=False
+    )
+
+    total_records = 0
+    total_leave_days = 0
+
+    # =====================================================
+    # الموظفين
+    # =====================================================
+
+    for (
+        employee_id,
+        employee_no,
+        employee_name
+    ), emp_df in grouped:
+
+        employee_name = safe_str(employee_name)
+        employee_no = safe_str(employee_no)
+
+        leave_count = len(emp_df)
+
+        employee_total_days = 0
+
+        # =================================================
+        # حساب إجمالي الأيام
+        # =================================================
+
+        for _, rr in emp_df.iterrows():
+
+            s = pd.to_datetime(
+                rr.get("start_date"),
+                errors="coerce"
+            )
+
+            e = pd.to_datetime(
+                rr.get("end_date"),
+                errors="coerce"
+            )
+
+            if pd.notna(s) and pd.notna(e):
+
+                employee_total_days += (
+                    (e - s).days + 1
+                )
+
+        total_records += leave_count
+        total_leave_days += employee_total_days
+
+        # =================================================
+        # عنوان الموظف
+        # =================================================
+
+        employee_header = Table(
+            [[
+                Paragraph(
+                    ar(
+                        f"{employee_name}"
+                        f"    |    الرقم الوظيفي: {employee_no}"
+                        f"    |    عدد الإجازات: {leave_count}"
+                        f"    |    إجمالي الأيام: {employee_total_days}"
+                    ),
+                    employee_style
+                )
+            ]],
+            colWidths=[18.8 * cm]
+        )
+
+        employee_header.setStyle(TableStyle([
+
+            ("BACKGROUND",
+             (0, 0),
+             (-1, -1),
+             colors.HexColor("#1e293b")),
+
+            ("BOX",
+             (0, 0),
+             (-1, -1),
+             0.5,
+             colors.HexColor("#0f172a")),
+
+            ("BOTTOMPADDING",
+             (0, 0),
+             (-1, -1),
+             8),
+
+            ("TOPPADDING",
+             (0, 0),
+             (-1, -1),
+             8),
+
+            ("RIGHTPADDING",
+             (0, 0),
+             (-1, -1),
+             10),
+
+        ]))
+
+        story.append(employee_header)
+
+        story.append(
+            Spacer(1, 0.15 * cm)
+        )
+
+        # =================================================
+        # جدول التفاصيل
+        # =================================================
+
+        rows = [
+            rtl_row([
+
+                Paragraph(
+                    ar("نوع الإجازة"),
+                    header_style
+                ),
+
+                Paragraph(
+                    ar("من"),
+                    header_style
+                ),
+
+                Paragraph(
+                    ar("إلى"),
+                    header_style
+                ),
+
+                Paragraph(
+                    ar("عدد الأيام"),
+                    header_style
+                ),
+
+                Paragraph(
+                    ar("المرفق"),
+                    header_style
+                ),
+
+                Paragraph(
+                    ar("ملاحظات"),
+                    header_style
+                ),
+
+            ])
+        ]
+
+        # =================================================
+        # تفاصيل الإجازات
+        # =================================================
+
+        for _, r in emp_df.iterrows():
+
+            leave_type = safe_str(
+                r.get("leave_type", "")
+            ) or "—"
+
+            start_date = fmt_date(
+                r.get("start_date")
+            )
+
+            end_date = fmt_date(
+                r.get("end_date")
+            )
+
+            attachment_name = safe_str(
+                r.get("attachment_name", "")
+            ) or "لا يوجد"
+
+            notes_text = safe_str(
+                r.get("notes", "")
+            ) or "—"
+
+            s = pd.to_datetime(
+                r.get("start_date"),
+                errors="coerce"
+            )
+
+            e = pd.to_datetime(
+                r.get("end_date"),
+                errors="coerce"
+            )
+
+            days_count = 1
+
+            if pd.notna(s) and pd.notna(e):
+
+                days_count = (
+                    (e - s).days + 1
+                )
+
+            rows.append(
+                rtl_row([
+
+                    Paragraph(
+                        ar(leave_type),
+                        cell_style
+                    ),
+
+                    Paragraph(
+                        ar(start_date),
+                        cell_style
+                    ),
+
+                    Paragraph(
+                        ar(end_date),
+                        cell_style
+                    ),
+
+                    Paragraph(
+                        ar(str(days_count)),
+                        cell_style
+                    ),
+
+                    Paragraph(
+                        ar(attachment_name),
+                        cell_style
+                    ),
+
+                    Paragraph(
+                        ar(notes_text),
+                        notes_style
+                    ),
+
+                ])
+            )
+
+        # =================================================
+        # إنشاء الجدول
+        # =================================================
+
+        details_table = Table(
+            rows,
+            colWidths=[
+                4.5 * cm,
+                2.3 * cm,
+                2.3 * cm,
+                2.0 * cm,
+                3.0 * cm,
+                4.7 * cm,
+            ],
+            repeatRows=1,
+        )
+
+        details_table.setStyle(TableStyle([
+
+            # HEADER
+            ("BACKGROUND",
+             (0, 0),
+             (-1, 0),
+             colors.HexColor("#334155")),
+
+            ("TEXTCOLOR",
+             (0, 0),
+             (-1, 0),
+             colors.white),
+
+            ("FONTNAME",
+             (0, 0),
+             (-1, -1),
+             FONT_NAME),
+
+            ("GRID",
+             (0, 0),
+             (-1, -1),
+             0.4,
+             colors.HexColor("#cbd5e1")),
+
+            ("ALIGN",
+             (0, 0),
+             (-1, -1),
+             "CENTER"),
+
+            ("VALIGN",
+             (0, 0),
+             (-1, -1),
+             "MIDDLE"),
+
+            ("BOTTOMPADDING",
+             (0, 0),
+             (-1, -1),
+             6),
+
+            ("TOPPADDING",
+             (0, 0),
+             (-1, -1),
+             6),
+
+            # ROW COLORS
+            ("ROWBACKGROUNDS",
+             (0, 1),
+             (-1, -1),
+             [
+                 colors.white,
+                 colors.HexColor("#f8fafc")
+             ]),
+
+        ]))
+
+        story.append(details_table)
+
+        story.append(
+            Spacer(1, 0.5 * cm)
+        )
+
+    # =====================================================
+    # الإجماليات
+    # =====================================================
+
+    summary_table = Table(
+        [[
+            Paragraph(
+                ar(
+                    f"إجمالي سجلات الإجازات: {total_records}"
+                  
+                ),
+                total_style
+            )
+        ]],
+        colWidths=[18.8 * cm]
+    )
+
+    summary_table.setStyle(TableStyle([
+
+        ("BACKGROUND",
+         (0, 0),
+         (-1, -1),
+         colors.HexColor("#e2e8f0")),
+
+        ("BOX",
+         (0, 0),
+         (-1, -1),
+         0.5,
+         colors.HexColor("#94a3b8")),
+
+        ("BOTTOMPADDING",
+         (0, 0),
+         (-1, -1),
+         8),
+
+        ("TOPPADDING",
+         (0, 0),
+         (-1, -1),
+         8),
+
     ]))
 
-    story.append(t_pdf)
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(ar(f"عدد السجلات: {len(pdf_df)}"), total_style))
+    story.append(summary_table)
+
+    # =====================================================
+    # BUILD PDF
+    # =====================================================
 
     doc.build(story)
+
     return buf.getvalue()
+
 
 
 def render_leave_results_table(res: pd.DataFrame):
@@ -1747,6 +1866,32 @@ with leave_root_tab:
                     render_leave_results_table(res)
 
 
+
+                    # =========================================================
+                    # PDF EXPORT
+                    # =========================================================
+
+                    pdf_bytes = build_leaves_pdf(res)
+
+                    if view_mode == "كل الموظفين":
+
+                        pdf_name = "leave_report_all.pdf"
+
+                    else:
+
+                        pdf_name = (
+                            f"leave_report_"
+                            f"{sanitize_filename(selected_emp_key)}.pdf"
+                        )
+
+                    st.download_button(
+                        label="📄 تصدير تقرير الإجازات PDF",
+                        data=pdf_bytes,
+                        file_name=pdf_name,
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="leave_pdf_download_btn"
+                    )
                     st.markdown("### إجراءات السجلات")
                     action_rows = res.reset_index(drop=True)
                     for idx, r in action_rows.iterrows():
@@ -1836,16 +1981,66 @@ with leave_root_tab:
                         st.rerun()
                         
 
-                    pdf_bytes = build_leaves_pdf(res)
-                    pdf_name = "leave_report_all.pdf" if view_mode == "كل الموظفين" else f"leave_report_{sanitize_filename(selected_emp_key)}.pdf"
-                    st.download_button(
-                        "📄 تحميل تقرير PDF",
-                        data=pdf_bytes,
-                        file_name=pdf_name,
-                        mime="application/pdf",
-                        use_container_width=True,
-                        key="leave_pdf_download_btn"
-                    )
+                        # =========================================================
+                        # تجهيز التقرير
+                        # =========================================================
+
+                        export_df = res.copy()
+
+                        # =========================================================
+                        # حساب عدد الإجازات لكل موظف
+                        # =========================================================
+
+                        leave_counts = (
+                            export_df.groupby(
+                                ["employee_id", "name_ar"],
+                                dropna=False
+                            )
+                            .size()
+                            .reset_index(name="leave_count")
+                        )
+
+                        export_df = export_df.merge(
+                            leave_counts,
+                            on=["employee_id", "name_ar"],
+                            how="left"
+                        )
+
+                        # =========================================================
+                        # إنشاء PDF
+                        # =========================================================
+
+                        pdf_bytes = build_leaves_pdf(
+                            export_df
+                        )
+
+                        # =========================================================
+                        # اسم الملف
+                        # =========================================================
+
+                        if view_mode == "كل الموظفين":
+
+                            pdf_name = "leave_report_all.pdf"
+
+                        else:
+
+                            pdf_name = (
+                                f"leave_report_"
+                                f"{sanitize_filename(selected_emp_key)}.pdf"
+                            )
+
+                        # =========================================================
+                        # زر التحميل
+                        # =========================================================
+
+                        st.download_button(
+                            label="📄 تصدير تقرير الإجازات PDF",
+                            data=pdf_bytes,
+                            file_name=pdf_name,
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="leave_pdf_download_btn"
+                        )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
