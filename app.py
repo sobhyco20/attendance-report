@@ -222,7 +222,60 @@ h1, h2, h3, h4, h5 {
     line-height: 1.8;
     text-align: right;
 }
-            
+
+/* =========================================
+   ORANGE PDF BUTTON
+========================================= */
+
+div[data-testid="stDownloadButton"] button[kind="secondary"] {
+
+    background: linear-gradient(
+        135deg,
+        #f97316,
+        #ea580c
+    ) !important;
+
+    color: white !important;
+
+    border: none !important;
+
+    border-radius: 12px !important;
+
+    font-weight: bold !important;
+
+    font-size: 15px !important;
+
+    padding: 0.6rem 1rem !important;
+
+    transition: 0.2s !important;
+}
+
+/* hover */
+
+div[data-testid="stDownloadButton"] button[kind="secondary"]:hover {
+
+    background: linear-gradient(
+        135deg,
+        #fb923c,
+        #f97316
+    ) !important;
+
+    transform: translateY(-2px);
+
+    box-shadow: 0 4px 12px rgba(
+        249,
+        115,
+        22,
+        0.35
+    );
+}
+
+/* active */
+
+div[data-testid="stDownloadButton"] button[kind="secondary"]:active {
+
+    transform: scale(0.98);
+}            
                                 
 </style>
 """, unsafe_allow_html=True)
