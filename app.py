@@ -1562,11 +1562,11 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
             rows,
             colWidths=[
                 4.0 * cm,
-                2.9 * cm,
-                2.9 * cm,
+                3.0 * cm,
+                3.0 * cm,
                 1.8 * cm,
                 2.7 * cm,
-                4.1 * cm,
+                3.1 * cm,
             ],
             repeatRows=1,
         )
