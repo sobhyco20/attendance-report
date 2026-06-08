@@ -429,6 +429,14 @@ def fmt_date(d):
         return safe_str(d)
 
 
+def eid_al_adha_hint() -> str:
+    return (
+        f"🕋 ملاحظة: إجازة عيد الأضحى المبارك من "
+        f"{fmt_date(EID_AL_ADHA_2026_START)} إلى {fmt_date(EID_AL_ADHA_2026_END)} "
+        "ولا تُحتسب ضمن الغياب."
+    )
+
+
 def month_year_title(emp_row):
     y, m = "", ""
     p_to = emp_row.get("period_to", "")
@@ -472,6 +480,49 @@ WEEKDAY_AR = {
     "Thursday": "الخميس",
     "Friday": "الجمعة",
 }
+
+
+EID_AL_ADHA_2026_START = pd.Timestamp("2026-05-26")
+EID_AL_ADHA_2026_END = pd.Timestamp("2026-05-30")
+
+
+def exclude_eid_al_adha_absence(summary_df: pd.DataFrame, absence_df: pd.DataFrame):
+    if absence_df is None or absence_df.empty or "date" not in absence_df.columns:
+        return summary_df, absence_df
+
+    filtered_absence = absence_df.copy()
+    absence_dates = pd.to_datetime(filtered_absence["date"], errors="coerce").dt.normalize()
+    eid_mask = absence_dates.between(EID_AL_ADHA_2026_START, EID_AL_ADHA_2026_END)
+
+    if not eid_mask.any():
+        return summary_df, absence_df
+
+    filtered_absence = filtered_absence.loc[~eid_mask].copy()
+
+    if summary_df is None or summary_df.empty or "absent_days" not in summary_df.columns:
+        return summary_df, filtered_absence
+
+    updated_summary = summary_df.copy()
+    if "employee_id" in updated_summary.columns and "employee_id" in filtered_absence.columns:
+        counts = (
+            filtered_absence.assign(
+                employee_id=filtered_absence["employee_id"].astype(str).str.strip()
+            )
+            .groupby("employee_id")
+            .size()
+        )
+        updated_summary["absent_days"] = (
+            updated_summary["employee_id"]
+            .astype(str)
+            .str.strip()
+            .map(counts)
+            .fillna(0)
+            .astype(int)
+        )
+    else:
+        updated_summary["absent_days"] = len(filtered_absence)
+
+    return updated_summary, filtered_absence
 
 
 def weekday_to_ar(x: str) -> str:
@@ -2270,6 +2321,7 @@ with main_tab:
         a1.markdown('<div class="grid-note">⏱ احتساب التأخير يتم تلقائيًا حسب وقت البداية + السماح.</div>', unsafe_allow_html=True)
         a2.markdown('<div class="grid-note">🏖️ الإجازات المعتمدة يتم استبعادها من الغياب تلقائيًا.</div>', unsafe_allow_html=True)
         a3.markdown('<div class="grid-note">📄 يمكنك تصدير تقرير الموظف PDF عربي وإنجليزي بعد رفع الملف.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="grid-note">{eid_al_adha_hint()}</div>', unsafe_allow_html=True)
     else:
         summary, late, absence, exempt_report, approved_leave_days = process_attendance(
             uploaded_file,
@@ -2280,6 +2332,7 @@ with main_tab:
             daily_required_hours=9.0,
             approved_leaves_df=leaves_df,
         )
+        summary, absence = exclude_eid_al_adha_absence(summary, absence)
 
         if summary is None or summary.empty:
             st.error("لا توجد بيانات بعد المعالجة.")
@@ -2327,6 +2380,7 @@ with main_tab:
                 <div class="hero-card">
                 <div class="hero-title">{title}</div>
                 <div class="hero-sub">{fri_note} • {sat_note}</div>
+                <div class="hero-sub">{eid_al_adha_hint()}</div>
                 <div style="font-size:28px;font-weight:1000;margin-top:10px">👤 {name_ar}</div>
                 <div class="hero-sub">{name_en}</div>
                 <div class="hero-sub" style="margin-top:4px">{nat} • {job} • {dept}</div>
