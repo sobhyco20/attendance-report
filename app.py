@@ -699,6 +699,71 @@ def expand_leave_days(leaves_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+SICK_LEAVE_ANNUAL_QUOTA = 30  # عدد أيام الإجازة المرضية المسموح بها سنويًا لكل موظف
+
+
+def compute_sick_leave_summary(leaves_df: pd.DataFrame, year: int | None = None) -> pd.DataFrame:
+    """
+    تجميع الإجازات المرضية لكل موظف: عدد الإجازات، إجمالي الأيام،
+    ومؤشر تجاوز الحد السنوي (30 يوم).
+    """
+    if leaves_df is None or leaves_df.empty:
+        return pd.DataFrame()
+
+    x = leaves_df.copy()
+    x["leave_type"] = x["leave_type"].apply(safe_str)
+    x = x[x["leave_type"].str.strip() == "مرضية"].copy()
+    if x.empty:
+        return pd.DataFrame()
+
+    x["start_date"] = pd.to_datetime(x["start_date"], errors="coerce")
+    x["end_date"] = pd.to_datetime(x["end_date"], errors="coerce")
+    x = x.dropna(subset=["start_date", "end_date"]).copy()
+    if x.empty:
+        return pd.DataFrame()
+
+    if year is not None:
+        x = x[(x["start_date"].dt.year == year) | (x["end_date"].dt.year == year)].copy()
+        if x.empty:
+            return pd.DataFrame()
+
+    x["days_count"] = (x["end_date"] - x["start_date"]).dt.days + 1
+    x["days_count"] = x["days_count"].clip(lower=1)
+
+    x["employee_id"] = x["employee_id"].apply(safe_str)
+    x["employee_no"] = x["employee_no"].apply(safe_str)
+    x["name_ar"] = x["name_ar"].apply(safe_str)
+    x["department"] = x["department"].apply(safe_str)
+
+    grouped = x.groupby(
+        ["employee_id", "employee_no", "name_ar", "department"],
+        dropna=False,
+        as_index=False,
+    ).agg(
+        leave_count=("leave_id", "count"),
+        total_days=("days_count", "sum"),
+        last_leave_date=("end_date", "max"),
+    )
+
+    def _status(days):
+        if days >= SICK_LEAVE_ANNUAL_QUOTA:
+            return "🔴 إنذار - تجاوز الحد"
+        if days >= SICK_LEAVE_ANNUAL_QUOTA * 0.7:
+            return "🟡 اقترب من الحد"
+        return "🟢 طبيعي"
+
+    grouped["status"] = grouped["total_days"].apply(_status)
+    grouped["remaining_days"] = (SICK_LEAVE_ANNUAL_QUOTA - grouped["total_days"]).clip(lower=0)
+    grouped["exceeded_days"] = (grouped["total_days"] - SICK_LEAVE_ANNUAL_QUOTA).clip(lower=0)
+
+    grouped = grouped.sort_values(
+        ["total_days", "leave_count"], ascending=[False, False]
+    ).reset_index(drop=True)
+    grouped.insert(0, "rank", grouped.index + 1)
+
+    return grouped
+
+
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp: pd.DataFrame | None = None, lang: str = "ar") -> bytes:
     FONT_EN = "Helvetica"
     FONT_AR_NAME = "AR"
@@ -1686,6 +1751,182 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
 
 
 
+def build_sick_leave_pdf(summary_df: pd.DataFrame, year_label: str = "") -> bytes:
+    """
+    تقرير PDF لملخص الإجازات المرضية لكل موظف مرتب من الأكثر إلى الأقل،
+    مع تمييز الموظفين المتجاوزين للحد السنوي (30 يوم).
+    """
+    buf = BytesIO()
+
+    FONT_NAME = "AR_SICK"
+    try:
+        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
+    except Exception:
+        pass
+
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=0.7 * cm,
+        rightMargin=0.7 * cm,
+        topMargin=0.7 * cm,
+        bottomMargin=0.7 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "sick_title",
+        parent=styles["Title"],
+        fontName=FONT_NAME,
+        fontSize=18,
+        alignment=1,
+        textColor=colors.HexColor("#111827"),
+        leading=24,
+        spaceAfter=6,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "sick_subtitle",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=11,
+        alignment=1,
+        textColor=colors.HexColor("#374151"),
+        leading=16,
+        spaceAfter=14,
+    )
+
+    header_style = ParagraphStyle(
+        "sick_header",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=10,
+        alignment=1,
+        textColor=colors.white,
+        leading=14,
+    )
+
+    cell_style = ParagraphStyle(
+        "sick_cell",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=9.5,
+        alignment=1,
+        textColor=colors.black,
+        leading=13,
+    )
+
+    total_style = ParagraphStyle(
+        "sick_total",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=11,
+        alignment=2,
+        textColor=colors.HexColor("#111827"),
+        leading=16,
+        spaceBefore=12,
+    )
+
+    def rtl_row(row):
+        return list(reversed(row))
+
+    story = []
+    story.append(Paragraph(ar("تقرير الإجازات المرضية حسب الموظف"), title_style))
+    if year_label:
+        story.append(Paragraph(ar(f"السنة: {year_label}"), subtitle_style))
+    story.append(
+        Paragraph(
+            ar(f"الحد السنوي المسموح به لكل موظف: {SICK_LEAVE_ANNUAL_QUOTA} يوم"),
+            subtitle_style,
+        )
+    )
+
+    if summary_df is None or summary_df.empty:
+        story.append(Paragraph(ar("لا توجد إجازات مرضية ضمن الفترة المحددة"), cell_style))
+        doc.build(story)
+        return buf.getvalue()
+
+    # رأس الجدول (بالترتيب من اليمين لليسار بعد rtl_row)
+    header_row = [
+        Paragraph(ar("الحالة"), header_style),
+        Paragraph(ar("المتبقي"), header_style),
+        Paragraph(ar("إجمالي الأيام"), header_style),
+        Paragraph(ar("عدد الإجازات"), header_style),
+        Paragraph(ar("القسم"), header_style),
+        Paragraph(ar("الرقم الوظيفي"), header_style),
+        Paragraph(ar("الموظف"), header_style),
+        Paragraph(ar("م"), header_style),
+    ]
+
+    rows = [header_row]
+    row_colors = [colors.HexColor("#1e293b")]
+
+    for _, r in summary_df.iterrows():
+        exceeded = int(r.get("total_days", 0)) >= SICK_LEAVE_ANNUAL_QUOTA
+        near_limit = int(r.get("total_days", 0)) >= SICK_LEAVE_ANNUAL_QUOTA * 0.7 and not exceeded
+
+        row = [
+            Paragraph(ar(safe_str(r.get("status"))), cell_style),
+            Paragraph(ar(str(int(r.get("remaining_days", 0)))), cell_style),
+            Paragraph(ar(str(int(r.get("total_days", 0)))), cell_style),
+            Paragraph(ar(str(int(r.get("leave_count", 0)))), cell_style),
+            Paragraph(ar(safe_str(r.get("department"))), cell_style),
+            Paragraph(ar(safe_str(r.get("employee_no"))), cell_style),
+            Paragraph(ar(safe_str(r.get("name_ar"))), cell_style),
+            Paragraph(ar(str(int(r.get("rank", 0)))), cell_style),
+        ]
+        rows.append(row)
+
+        if exceeded:
+            row_colors.append(colors.HexColor("#fee2e2"))
+        elif near_limit:
+            row_colors.append(colors.HexColor("#fef9c3"))
+        else:
+            row_colors.append(colors.white if len(row_colors) % 2 == 0 else colors.HexColor("#f8fafc"))
+
+    col_widths = [1.6 * cm, 1.8 * cm, 2.3 * cm, 2.3 * cm, 3.2 * cm, 2.8 * cm, 5.0 * cm, 1.0 * cm]
+
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for i, c in enumerate(row_colors):
+        if i == 0:
+            continue
+        style_cmds.append(("BACKGROUND", (0, i), (-1, i), c))
+
+    table.setStyle(TableStyle(style_cmds))
+    story.append(table)
+
+    exceeded_count = int((summary_df["total_days"] >= SICK_LEAVE_ANNUAL_QUOTA).sum())
+    total_employees = len(summary_df)
+    total_days_all = int(summary_df["total_days"].sum())
+
+    story.append(Spacer(1, 12))
+    story.append(
+        Paragraph(
+            ar(f"👥 عدد الموظفين: {total_employees}    |    📅 إجمالي أيام الإجازات المرضية: {total_days_all}"),
+            total_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            ar(f"🔴 عدد الموظفين المتجاوزين للحد السنوي ({SICK_LEAVE_ANNUAL_QUOTA} يوم): {exceeded_count}"),
+            total_style,
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()
+
+
 def render_leave_results_table(res: pd.DataFrame):
     display_df = res.copy()
     display_df["من"] = display_df["start_date"].apply(fmt_date)
@@ -1759,8 +2000,8 @@ def show_attachment_dialog_if_needed():
 
 
 with leave_root_tab:
-    register_tab, view_tab, edit_tab = st.tabs(
-        ["➕ تسجيل إجازة", "📊 عرض الإجازات", "✏️ تعديل الإجازات"]
+    register_tab, view_tab, sick_tab, edit_tab = st.tabs(
+        ["➕ تسجيل إجازة", "📊 عرض الإجازات", "🤒 الإجازات المرضية", "✏️ تعديل الإجازات"]
     )
 
     with register_tab:
@@ -2145,6 +2386,132 @@ with leave_root_tab:
                             use_container_width=True,
                             key="leave_pdf_download_btn"
                         )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with sick_tab:
+        st.markdown(
+            '<div class="card"><div class="card-title">🤒 تقرير الإجازات المرضية حسب الموظف</div>',
+            unsafe_allow_html=True
+        )
+
+        all_leaves_sick = load_leaves()
+
+        if all_leaves_sick.empty or "leave_type" not in all_leaves_sick.columns:
+            st.info("لا توجد بيانات إجازات بعد.")
+        else:
+            years_series = pd.to_datetime(all_leaves_sick["start_date"], errors="coerce").dt.year.dropna()
+            available_years = sorted(years_series.astype(int).unique().tolist(), reverse=True)
+
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                year_options = ["كل السنوات"] + [str(y) for y in available_years]
+                selected_year_label = st.selectbox(
+                    "السنة",
+                    options=year_options,
+                    index=0,
+                    key="sick_leave_year_filter"
+                )
+            with c2:
+                st.caption(f"🔴 الحد السنوي المسموح به لكل موظف: {SICK_LEAVE_ANNUAL_QUOTA} يوم")
+
+            selected_year = None if selected_year_label == "كل السنوات" else int(selected_year_label)
+
+            summary_df = compute_sick_leave_summary(all_leaves_sick, year=selected_year)
+
+            if summary_df.empty:
+                st.info("لا توجد إجازات مرضية مسجلة ضمن الفترة المحددة.")
+            else:
+                total_employees = len(summary_df)
+                exceeded_count = int((summary_df["total_days"] >= SICK_LEAVE_ANNUAL_QUOTA).sum())
+                near_limit_count = int(
+                    ((summary_df["total_days"] >= SICK_LEAVE_ANNUAL_QUOTA * 0.7) &
+                     (summary_df["total_days"] < SICK_LEAVE_ANNUAL_QUOTA)).sum()
+                )
+                total_days_all = int(summary_df["total_days"].sum())
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("👥 عدد الموظفين", total_employees)
+                m2.metric("📅 إجمالي أيام الإجازات المرضية", total_days_all)
+                m3.metric("🟡 اقتربوا من الحد", near_limit_count)
+                m4.metric("🔴 تجاوزوا الحد السنوي", exceeded_count)
+
+                if exceeded_count > 0:
+                    st.error(
+                        f"⚠️ يوجد {exceeded_count} موظف تجاوز الحد السنوي المسموح به ({SICK_LEAVE_ANNUAL_QUOTA} يوم) "
+                        f"من الإجازات المرضية."
+                    )
+
+                display_df = summary_df.copy()
+                display_df["الترتيب"] = display_df["rank"]
+                display_df["الموظف"] = display_df["name_ar"]
+                display_df["الرقم الوظيفي"] = display_df["employee_no"]
+                display_df["القسم"] = display_df["department"]
+                display_df["عدد الإجازات"] = display_df["leave_count"]
+                display_df["إجمالي الأيام"] = display_df["total_days"]
+                display_df["المتبقي من الحد"] = display_df["remaining_days"]
+                display_df["آخر إجازة"] = display_df["last_leave_date"].apply(fmt_date)
+                display_df["المؤشر"] = display_df["status"]
+
+                table_df = display_df[[
+                    "الترتيب",
+                    "الموظف",
+                    "الرقم الوظيفي",
+                    "القسم",
+                    "عدد الإجازات",
+                    "إجمالي الأيام",
+                    "المتبقي من الحد",
+                    "آخر إجازة",
+                    "المؤشر",
+                ]].reset_index(drop=True)
+
+                st.dataframe(
+                    table_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "إجمالي الأيام": st.column_config.ProgressColumn(
+                            "إجمالي الأيام",
+                            min_value=0,
+                            max_value=max(SICK_LEAVE_ANNUAL_QUOTA, int(summary_df["total_days"].max())),
+                            format="%d",
+                        ),
+                    },
+                )
+
+                st.markdown("### 📌 تفاصيل الموظفين المتجاوزين أو المقتربين من الحد")
+                risky_df = summary_df[summary_df["total_days"] >= SICK_LEAVE_ANNUAL_QUOTA * 0.7]
+                if risky_df.empty:
+                    st.success("لا يوجد موظفون تجاوزوا أو اقتربوا من الحد السنوي حاليًا ✅")
+                else:
+                    for _, r in risky_df.iterrows():
+                        exceeded = r["total_days"] >= SICK_LEAVE_ANNUAL_QUOTA
+                        with st.container(border=True):
+                            e1, e2, e3 = st.columns([3, 2, 2])
+                            with e1:
+                                st.markdown(f"**{safe_str(r.get('name_ar'))}**")
+                                st.caption(f"{safe_str(r.get('employee_no'))} — {safe_str(r.get('department'))}")
+                            with e2:
+                                st.write(f"عدد الإجازات: {int(r.get('leave_count', 0))}")
+                                st.write(f"إجمالي الأيام: {int(r.get('total_days', 0))}")
+                            with e3:
+                                if exceeded:
+                                    st.error(f"🔴 تجاوز الحد بـ {int(r.get('exceeded_days', 0))} يوم")
+                                else:
+                                    st.warning(f"🟡 متبقي له {int(r.get('remaining_days', 0))} يوم فقط")
+
+                st.markdown("### 📄 تصدير التقرير")
+                sick_pdf_bytes = build_sick_leave_pdf(summary_df, year_label=selected_year_label)
+                sick_pdf_name = f"sick_leave_report_{selected_year_label}.pdf".replace(" ", "_")
+
+                st.download_button(
+                    label="📄 تصدير تقرير الإجازات المرضية PDF",
+                    data=sick_pdf_bytes,
+                    file_name=sick_pdf_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="sick_leave_pdf_download_btn"
+                )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
