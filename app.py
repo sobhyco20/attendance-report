@@ -3,6 +3,7 @@
 # =========================
 import os
 import re
+import datetime as dt
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -702,10 +703,15 @@ def expand_leave_days(leaves_df: pd.DataFrame) -> pd.DataFrame:
 SICK_LEAVE_ANNUAL_QUOTA = 30  # عدد أيام الإجازة المرضية المسموح بها سنويًا لكل موظف
 
 
-def compute_sick_leave_summary(leaves_df: pd.DataFrame, year: int | None = None) -> pd.DataFrame:
+def compute_sick_leave_summary(
+    leaves_df: pd.DataFrame,
+    date_from=None,
+    date_to=None,
+) -> pd.DataFrame:
     """
-    تجميع الإجازات المرضية لكل موظف: عدد الإجازات، إجمالي الأيام،
+    تجميع الإجازات المرضية لكل موظف ضمن فترة محددة: عدد الإجازات، إجمالي الأيام،
     ومؤشر تجاوز الحد السنوي (30 يوم).
+    كل يوم إجازة يقع خارج الفترة المحددة يتم استبعاده (قص عند حدود الفترة).
     """
     if leaves_df is None or leaves_df.empty:
         return pd.DataFrame()
@@ -722,10 +728,21 @@ def compute_sick_leave_summary(leaves_df: pd.DataFrame, year: int | None = None)
     if x.empty:
         return pd.DataFrame()
 
-    if year is not None:
-        x = x[(x["start_date"].dt.year == year) | (x["end_date"].dt.year == year)].copy()
-        if x.empty:
-            return pd.DataFrame()
+    date_from = pd.to_datetime(date_from) if date_from is not None else None
+    date_to = pd.to_datetime(date_to) if date_to is not None else None
+
+    if date_from is not None:
+        x = x[x["end_date"] >= date_from].copy()
+    if date_to is not None:
+        x = x[x["start_date"] <= date_to].copy()
+    if x.empty:
+        return pd.DataFrame()
+
+    # قص كل سجل عند حدود الفترة المحددة قبل احتساب عدد الأيام
+    if date_from is not None:
+        x["start_date"] = x["start_date"].clip(lower=date_from)
+    if date_to is not None:
+        x["end_date"] = x["end_date"].clip(upper=date_to)
 
     x["days_count"] = (x["end_date"] - x["start_date"]).dt.days + 1
     x["days_count"] = x["days_count"].clip(lower=1)
@@ -1834,7 +1851,7 @@ def build_sick_leave_pdf(summary_df: pd.DataFrame, year_label: str = "") -> byte
     story = []
     story.append(Paragraph(ar("تقرير الإجازات المرضية حسب الموظف"), title_style))
     if year_label:
-        story.append(Paragraph(ar(f"السنة: {year_label}"), subtitle_style))
+        story.append(Paragraph(ar(f"الفترة: {year_label}"), subtitle_style))
     story.append(
         Paragraph(
             ar(f"الحد السنوي المسموح به لكل موظف: {SICK_LEAVE_ANNUAL_QUOTA} يوم"),
@@ -2400,24 +2417,36 @@ with leave_root_tab:
         if all_leaves_sick.empty or "leave_type" not in all_leaves_sick.columns:
             st.info("لا توجد بيانات إجازات بعد.")
         else:
-            years_series = pd.to_datetime(all_leaves_sick["start_date"], errors="coerce").dt.year.dropna()
-            available_years = sorted(years_series.astype(int).unique().tolist(), reverse=True)
+            default_from = dt.date(2026, 1, 1)
+            default_to = dt.date.today()
 
-            c1, c2 = st.columns([1, 2])
+            c1, c2, c3 = st.columns([1, 1, 2])
             with c1:
-                year_options = ["كل السنوات"] + [str(y) for y in available_years]
-                selected_year_label = st.selectbox(
-                    "السنة",
-                    options=year_options,
-                    index=0,
-                    key="sick_leave_year_filter"
+                sick_date_from = st.date_input(
+                    "من تاريخ",
+                    value=default_from,
+                    key="sick_leave_date_from"
                 )
             with c2:
+                sick_date_to = st.date_input(
+                    "إلى تاريخ",
+                    value=default_to,
+                    key="sick_leave_date_to"
+                )
+            with c3:
                 st.caption(f"🔴 الحد السنوي المسموح به لكل موظف: {SICK_LEAVE_ANNUAL_QUOTA} يوم")
 
-            selected_year = None if selected_year_label == "كل السنوات" else int(selected_year_label)
+            if sick_date_to < sick_date_from:
+                st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
+                summary_df = pd.DataFrame()
+            else:
+                summary_df = compute_sick_leave_summary(
+                    all_leaves_sick,
+                    date_from=sick_date_from,
+                    date_to=sick_date_to,
+                )
 
-            summary_df = compute_sick_leave_summary(all_leaves_sick, year=selected_year)
+            period_label = f"{fmt_date(sick_date_from)} → {fmt_date(sick_date_to)}"
 
             if summary_df.empty:
                 st.info("لا توجد إجازات مرضية مسجلة ضمن الفترة المحددة.")
@@ -2501,8 +2530,11 @@ with leave_root_tab:
                                     st.warning(f"🟡 متبقي له {int(r.get('remaining_days', 0))} يوم فقط")
 
                 st.markdown("### 📄 تصدير التقرير")
-                sick_pdf_bytes = build_sick_leave_pdf(summary_df, year_label=selected_year_label)
-                sick_pdf_name = f"sick_leave_report_{selected_year_label}.pdf".replace(" ", "_")
+                sick_pdf_bytes = build_sick_leave_pdf(summary_df, year_label=period_label)
+                sick_pdf_name = (
+                    f"sick_leave_report_"
+                    f"{sick_date_from.strftime('%Y%m%d')}_{sick_date_to.strftime('%Y%m%d')}.pdf"
+                )
 
                 st.download_button(
                     label="📄 تصدير تقرير الإجازات المرضية PDF",
