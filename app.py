@@ -714,6 +714,22 @@ def safe_str(x):
     return "" if x is None or (isinstance(x, float) and pd.isna(x)) else str(x).strip()
 
 
+def fmt_id(x):
+    """يحول أي قيمة رقم وظيفي/رقم موظف (بما فيها float زي 27164.0) لنص بدون فواصل عشرية."""
+    if x is None or (isinstance(x, float) and pd.isna(x)):
+        return ""
+    s = str(x).strip()
+    if s == "" or s.lower() == "nan":
+        return ""
+    try:
+        f = float(s)
+        if f.is_integer():
+            return str(int(f))
+        return s
+    except (ValueError, TypeError):
+        return s
+
+
 def fmt_date(d):
     try:
         return pd.to_datetime(d).strftime("%d-%m-%Y")
@@ -920,8 +936,8 @@ def get_employee_lookup(employees_df: pd.DataFrame | None) -> pd.DataFrame:
     for c in ["name_ar", "name_en", "department", "job_title"]:
         if c not in emp.columns:
             emp[c] = ""
-    emp["employee_id"] = emp["employee_id"].astype(str).str.strip()
-    emp["employee_no"] = emp["employee_no"].astype(str).str.strip()
+    emp["employee_id"] = emp["employee_id"].apply(fmt_id)
+    emp["employee_no"] = emp["employee_no"].apply(fmt_id)
     return emp[["employee_id", "employee_no", "name_ar", "name_en", "department", "job_title"]].drop_duplicates()
 
 
@@ -937,7 +953,7 @@ def find_employee_record(employees_df: pd.DataFrame | None, selected_key: str):
 
 
 def employee_option_label(row) -> str:
-    return f"{safe_str(row.get('name_ar'))} — {safe_str(row.get('employee_no') or row.get('employee_id'))}"
+    return f"{safe_str(row.get('name_ar'))} — {fmt_id(row.get('employee_no') or row.get('employee_id'))}"
 
 
 def save_leave_attachment(uploaded_file, employee_id: str, start_date, end_date) -> tuple[str, str]:
@@ -1039,7 +1055,7 @@ def compute_sick_leave_summary(
     x["days_count"] = x["days_count"].clip(lower=1)
 
     x["employee_id"] = x["employee_id"].apply(safe_str)
-    x["employee_no"] = x["employee_no"].apply(safe_str)
+    x["employee_no"] = x["employee_no"].apply(fmt_id)
     x["name_ar"] = x["name_ar"].apply(safe_str)
     x["department"] = x["department"].apply(safe_str)
 
@@ -1137,7 +1153,7 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
     name_ar_ = safe_str(emp_row.get("name_ar", ""))
     name_en_ = safe_str(emp_row.get("name_en", ""))
     nat = safe_str(emp_row.get("nationality", emp_row.get("nationality_raw", "")))
-    emp_no = safe_str(emp_row.get("employee_no", ""))
+    emp_no = fmt_id(emp_row.get("employee_no", ""))
     dept = safe_str(emp_row.get("department", ""))
     job = safe_str(emp_row.get("job_title", ""))
 
@@ -1721,7 +1737,7 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
     ), emp_df in grouped:
 
         employee_name = safe_str(employee_name)
-        employee_no = safe_str(employee_no)
+        employee_no = fmt_id(employee_no)
 
         leave_count = len(emp_df)
 
@@ -2180,7 +2196,7 @@ def build_sick_leave_pdf(summary_df: pd.DataFrame, year_label: str = "") -> byte
             Paragraph(ar(str(int(r.get("total_days", 0)))), cell_style),
             Paragraph(ar(str(int(r.get("leave_count", 0)))), cell_style),
             Paragraph(ar(safe_str(r.get("department"))), cell_style),
-            Paragraph(ar(safe_str(r.get("employee_no"))), cell_style),
+            Paragraph(ar(fmt_id(r.get("employee_no"))), cell_style),
             Paragraph(ar(safe_str(r.get("name_ar"))), cell_style),
             Paragraph(ar(str(int(r.get("rank", 0)))), cell_style),
         ]
@@ -2240,7 +2256,7 @@ def render_leave_results_table(res: pd.DataFrame):
     display_df["من"] = display_df["start_date"].apply(fmt_date)
     display_df["إلى"] = display_df["end_date"].apply(fmt_date)
     display_df["الموظف"] = display_df["name_ar"].apply(safe_str)
-    display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(safe_str)
+    display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(fmt_id)
     display_df["النوع"] = display_df["leave_type"].apply(safe_str)
     display_df["الحالة"] = display_df["status"].apply(safe_str)
     display_df["المرفق"] = display_df["attachment_name"].apply(lambda x: "📎" if safe_str(x) else "—")
@@ -2418,7 +2434,7 @@ with leave_root_tab:
                         add_leave_record({
                             "leave_id": f"LV-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
                             "employee_id": safe_str(emp.get("employee_id")),
-                            "employee_no": safe_str(emp.get("employee_no")),
+                            "employee_no": fmt_id(emp.get("employee_no")),
                             "name_ar": safe_str(emp.get("name_ar")),
                             "name_en": safe_str(emp.get("name_en")),
                             "department": safe_str(emp.get("department")),
@@ -2553,7 +2569,7 @@ with leave_root_tab:
 
                             with a1:
                                 st.markdown(f"**{safe_str(r.get('name_ar'))}**")
-                                st.caption(safe_str(r.get("employee_no")))
+                                st.caption(fmt_id(r.get("employee_no")))
 
                             with a2:
                                 st.write(f"📌 {safe_str(r.get('leave_type'))}")
@@ -2765,7 +2781,7 @@ with leave_root_tab:
                 display_df = summary_df.copy()
                 display_df["الترتيب"] = display_df["rank"]
                 display_df["الموظف"] = display_df["name_ar"]
-                display_df["الرقم الوظيفي"] = display_df["employee_no"]
+                display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(fmt_id)
                 display_df["القسم"] = display_df["department"]
                 display_df["عدد الإجازات"] = display_df["leave_count"]
                 display_df["إجمالي الأيام"] = display_df["total_days"]
@@ -2810,7 +2826,7 @@ with leave_root_tab:
                             e1, e2, e3 = st.columns([3, 2, 2])
                             with e1:
                                 st.markdown(f"**{safe_str(r.get('name_ar'))}**")
-                                st.caption(f"{safe_str(r.get('employee_no'))} — {safe_str(r.get('department'))}")
+                                st.caption(f"{fmt_id(r.get('employee_no'))} — {safe_str(r.get('department'))}")
                             with e2:
                                 st.write(f"عدد الإجازات: {int(r.get('leave_count', 0))}")
                                 st.write(f"إجمالي الأيام: {int(r.get('total_days', 0))}")
@@ -2926,7 +2942,7 @@ with leave_root_tab:
                     with e1:
                         st.text_input("الموظف", value=safe_str(r.get("name_ar")), disabled=True, key=f"edit_name_{selected_edit_id}")
                     with e2:
-                        st.text_input("الرقم الوظيفي", value=safe_str(r.get("employee_no")), disabled=True, key=f"edit_no_{selected_edit_id}")
+                        st.text_input("الرقم الوظيفي", value=fmt_id(r.get("employee_no")), disabled=True, key=f"edit_no_{selected_edit_id}")
 
                     new_type = st.selectbox("نوع الإجازة", leave_types, index=current_index, key=f"edit_type_{selected_edit_id}")
 
@@ -3032,7 +3048,7 @@ with main_tab:
         else:
             emp = summary.iloc[0]
             emp_personnel_id = safe_str(emp.get("employee_id", ""))
-            emp_no = safe_str(emp.get("employee_no", ""))
+            emp_no = fmt_id(emp.get("employee_no", ""))
             name_ar = safe_str(emp.get("name_ar", ""))
             name_en = safe_str(emp.get("name_en", ""))
             nat = safe_str(emp.get("nationality", emp.get("nationality_raw", "")))
