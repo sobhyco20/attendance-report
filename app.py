@@ -359,11 +359,15 @@ div[data-testid="stFileUploaderDropzone"] button {
 /* =========================================
    TABS — تبويبات احترافية في المنتصف
 ========================================= */
+div[data-testid="stTabs"] {
+    width: 100% !important;
+}
+
 div[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    display: flex;
-    width: 100%;
+    display: flex !important;
+    width: 100% !important;
     gap: 8px;
-    justify-content: center;
+    justify-content: center !important;
     border-bottom: 1px solid #334155;
     padding-bottom: 4px;
 }
