@@ -491,6 +491,39 @@ div[data-testid="stToggle"] label p {
     color: #e5e7eb !important;
 }
 
+/* إعادة تلوين أزرار الاختيار والمربعات الأصلية (تعمل بغض النظر عن المكتبة الداخلية) */
+input[type="radio"],
+input[type="checkbox"] {
+    accent-color: #3b82f6 !important;
+    width: 18px !important;
+    height: 18px !important;
+    cursor: pointer;
+}
+
+/* مجموعة خيارات الراديو — تباعد وتنظيم أوضح */
+div[data-testid="stRadio"] > div[role="radiogroup"] {
+    gap: 18px;
+}
+
+div[data-testid="stRadio"] label {
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 8px 16px;
+    transition: 0.2s;
+    cursor: pointer;
+}
+
+div[data-testid="stRadio"] label:hover {
+    border-color: #3b82f6;
+}
+
+/* الخيار المحدد حاليًا يتميّز بحد أزرق */
+div[data-testid="stRadio"] label:has(input:checked) {
+    border-color: #3b82f6;
+    background-color: #1e3a5f;
+}
+
 div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
     background-color: #1e293b !important;
     border: 1px solid #334155 !important;
