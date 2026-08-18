@@ -359,14 +359,16 @@ div[data-testid="stFileUploaderDropzone"] button {
 /* =========================================
    TABS — تبويبات احترافية في المنتصف
 ========================================= */
-.stTabs [data-baseweb="tab-list"] {
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    display: flex;
+    width: 100%;
     gap: 8px;
     justify-content: center;
     border-bottom: 1px solid #334155;
     padding-bottom: 4px;
 }
 
-.stTabs [data-baseweb="tab"] {
+div[data-testid="stTabs"] [data-baseweb="tab"] {
     background-color: transparent;
     color: #94a3b8;
     font-weight: 700;
@@ -376,12 +378,12 @@ div[data-testid="stFileUploaderDropzone"] button {
     transition: 0.2s;
 }
 
-.stTabs [data-baseweb="tab"]:hover {
+div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
     color: #e5e7eb;
     background-color: #1e293b;
 }
 
-.stTabs [aria-selected="true"] {
+div[data-testid="stTabs"] [aria-selected="true"] {
     color: #ffffff !important;
     background-color: #3b82f6 !important;
     box-shadow: 0 2px 10px rgba(59, 130, 246, 0.45);
@@ -389,7 +391,7 @@ div[data-testid="stFileUploaderDropzone"] button {
 }
 
 /* الخط الافتراضي الملوّن تحت التبويب النشط — نشيله لأننا استخدمنا خلفية بارزة بدلاً منه */
-.stTabs [data-baseweb="tab-highlight"] {
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
     background-color: transparent !important;
 }
 
