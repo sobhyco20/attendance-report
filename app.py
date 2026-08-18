@@ -363,7 +363,7 @@ div[data-testid="stTabs"] {
     text-align: center !important;
 }
 
-div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+div[data-testid="stTabs"] div[role="tablist"] {
     display: inline-flex !important;
     width: auto !important;
     gap: 8px;
@@ -372,7 +372,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] {
     margin: 0 auto !important;
 }
 
-div[data-testid="stTabs"] [data-baseweb="tab"] {
+div[data-testid="stTabs"] [data-testid="stTab"] {
     background-color: transparent;
     color: #94a3b8;
     font-weight: 700;
@@ -382,12 +382,12 @@ div[data-testid="stTabs"] [data-baseweb="tab"] {
     transition: 0.2s;
 }
 
-div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+div[data-testid="stTabs"] [data-testid="stTab"]:hover {
     color: #e5e7eb;
     background-color: #1e293b;
 }
 
-div[data-testid="stTabs"] [aria-selected="true"] {
+div[data-testid="stTabs"] [data-testid="stTab"][aria-selected="true"] {
     color: #ffffff !important;
     background-color: #3b82f6 !important;
     box-shadow: 0 2px 10px rgba(59, 130, 246, 0.45);
@@ -395,7 +395,8 @@ div[data-testid="stTabs"] [aria-selected="true"] {
 }
 
 /* الخط الافتراضي الملوّن تحت التبويب النشط — نشيله لأننا استخدمنا خلفية بارزة بدلاً منه */
-div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+div[data-testid="stTabs"] [data-testid="stTabsHighlight"] {
     background-color: transparent !important;
 }
 
