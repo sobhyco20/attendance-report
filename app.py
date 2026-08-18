@@ -71,9 +71,9 @@ div[data-testid="stDataFrame"] * {
     text-align: right;
 }
 
-/* الأعمدة (columns): ترتيب طبيعي بدل عكسها بالقوة */
+/* الأعمدة (columns): ترتيب من اليمين لليسار (RTL حقيقي) */
 div[data-testid="stHorizontalBlock"] {
-    direction: ltr;
+    direction: rtl;
 }
 div[data-testid="stHorizontalBlock"] > div {
     direction: rtl;
