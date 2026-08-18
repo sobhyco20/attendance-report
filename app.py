@@ -1088,6 +1088,97 @@ def compute_sick_leave_summary(
     return grouped
 
 
+def compute_all_leave_summary(
+    leaves_df: pd.DataFrame,
+    date_from=None,
+    date_to=None,
+) -> pd.DataFrame:
+    """
+    تجميع كل الإجازات (كل الأنواع) لكل موظف ضمن فترة محددة:
+    عدد الإجازات، إجمالي الأيام، وآخر إجازة.
+    كل يوم إجازة يقع خارج الفترة المحددة يتم استبعاده (قص عند حدود الفترة).
+    """
+    if leaves_df is None or leaves_df.empty:
+        return pd.DataFrame()
+
+    x = leaves_df.copy()
+    x["leave_type"] = x["leave_type"].apply(safe_str)
+
+    x["start_date"] = pd.to_datetime(x["start_date"], errors="coerce")
+    x["end_date"] = pd.to_datetime(x["end_date"], errors="coerce")
+    x = x.dropna(subset=["start_date", "end_date"]).copy()
+    if x.empty:
+        return pd.DataFrame()
+
+    date_from = pd.to_datetime(date_from) if date_from is not None else None
+    date_to = pd.to_datetime(date_to) if date_to is not None else None
+
+    if date_from is not None:
+        x = x[x["end_date"] >= date_from].copy()
+    if date_to is not None:
+        x = x[x["start_date"] <= date_to].copy()
+    if x.empty:
+        return pd.DataFrame()
+
+    # قص كل سجل عند حدود الفترة المحددة قبل احتساب عدد الأيام
+    if date_from is not None:
+        x["start_date"] = x["start_date"].clip(lower=date_from)
+    if date_to is not None:
+        x["end_date"] = x["end_date"].clip(upper=date_to)
+
+    x["days_count"] = (x["end_date"] - x["start_date"]).dt.days + 1
+    x["days_count"] = x["days_count"].clip(lower=1)
+
+    x["employee_id"] = x["employee_id"].apply(safe_str)
+    x["employee_no"] = x["employee_no"].apply(fmt_id)
+    x["name_ar"] = x["name_ar"].apply(safe_str)
+    x["department"] = x["department"].apply(safe_str)
+
+    grouped = x.groupby(
+        ["employee_id", "employee_no", "name_ar", "department"],
+        dropna=False,
+        as_index=False,
+    ).agg(
+        leave_count=("leave_id", "count"),
+        total_days=("days_count", "sum"),
+        last_leave_date=("end_date", "max"),
+    )
+
+    # نوع آخر إجازة لكل موظف (بعد ترتيب السجلات بالتاريخ)
+    last_type_df = (
+        x.sort_values("end_date")
+        .groupby(["employee_id", "employee_no", "name_ar", "department"], dropna=False)
+        .tail(1)[["employee_id", "employee_no", "name_ar", "department", "leave_type"]]
+        .rename(columns={"leave_type": "آخر_نوع_إجازة"})
+    )
+    grouped = grouped.merge(
+        last_type_df, on=["employee_id", "employee_no", "name_ar", "department"], how="left"
+    )
+
+    # عدد أيام كل نوع إجازة على حدة (سنوية / مرضية / بدون راتب / ...) لكل موظف
+    by_type = (
+        x.groupby(["employee_id", "employee_no", "name_ar", "department", "leave_type"], dropna=False)["days_count"]
+        .sum()
+        .reset_index()
+    )
+    breakdown_map = {}
+    for (eid, eno, nm, dep), g in by_type.groupby(["employee_id", "employee_no", "name_ar", "department"]):
+        parts = [f"{safe_str(t)}: {int(d)}" for t, d in zip(g["leave_type"], g["days_count"])]
+        breakdown_map[(eid, eno, nm, dep)] = " | ".join(parts)
+
+    grouped["نوع_الإجازات_تفصيلي"] = grouped.apply(
+        lambda r: breakdown_map.get((r["employee_id"], r["employee_no"], r["name_ar"], r["department"]), ""),
+        axis=1,
+    )
+
+    grouped = grouped.sort_values(
+        ["total_days", "leave_count"], ascending=[False, False]
+    ).reset_index(drop=True)
+    grouped.insert(0, "rank", grouped.index + 1)
+
+    return grouped
+
+
 def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp: pd.DataFrame | None = None, lang: str = "ar") -> bytes:
     FONT_EN = "Helvetica"
     FONT_AR_NAME = "AR"
@@ -2251,6 +2342,159 @@ def build_sick_leave_pdf(summary_df: pd.DataFrame, year_label: str = "") -> byte
     return buf.getvalue()
 
 
+def build_all_leave_summary_pdf(summary_df: pd.DataFrame, year_label: str = "") -> bytes:
+    """
+    تقرير PDF شامل لملخص إجازات كل الموظفين (كل الأنواع)،
+    يعرض عدد الإجازات وإجمالي الأيام وآخر إجازة لكل موظف.
+    """
+    buf = BytesIO()
+
+    FONT_NAME = "AR_ALLSUM"
+    try:
+        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
+    except Exception:
+        pass
+
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=0.7 * cm,
+        rightMargin=0.7 * cm,
+        topMargin=0.7 * cm,
+        bottomMargin=0.7 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "allsum_title",
+        parent=styles["Title"],
+        fontName=FONT_NAME,
+        fontSize=18,
+        alignment=1,
+        textColor=colors.HexColor("#111827"),
+        leading=24,
+        spaceAfter=6,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "allsum_subtitle",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=11,
+        alignment=1,
+        textColor=colors.HexColor("#374151"),
+        leading=16,
+        spaceAfter=14,
+    )
+
+    header_style = ParagraphStyle(
+        "allsum_header",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=10,
+        alignment=1,
+        textColor=colors.white,
+        leading=14,
+    )
+
+    cell_style = ParagraphStyle(
+        "allsum_cell",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=9.5,
+        alignment=1,
+        textColor=colors.black,
+        leading=13,
+    )
+
+    total_style = ParagraphStyle(
+        "allsum_total",
+        parent=styles["BodyText"],
+        fontName=FONT_NAME,
+        fontSize=11,
+        alignment=2,
+        textColor=colors.HexColor("#111827"),
+        leading=16,
+        spaceBefore=12,
+    )
+
+    story = []
+    story.append(Paragraph(ar("ملخص الإجازات الشامل لكل الموظفين"), title_style))
+    if year_label:
+        story.append(Paragraph(ar(f"الفترة: {year_label}"), subtitle_style))
+
+    if summary_df is None or summary_df.empty:
+        story.append(Paragraph(ar("لا توجد إجازات مسجلة ضمن الفترة المحددة"), cell_style))
+        doc.build(story)
+        return buf.getvalue()
+
+    # رأس الجدول (بالترتيب من اليمين لليسار بعد rtl_row)
+    header_row = [
+        Paragraph(ar("آخر إجازة"), header_style),
+        Paragraph(ar("إجمالي الأيام"), header_style),
+        Paragraph(ar("عدد الإجازات"), header_style),
+        Paragraph(ar("القسم"), header_style),
+        Paragraph(ar("الرقم الوظيفي"), header_style),
+        Paragraph(ar("الموظف"), header_style),
+        Paragraph(ar("م"), header_style),
+    ]
+
+    rows = [header_row]
+
+    for _, r in summary_df.iterrows():
+        row = [
+            Paragraph(ar(fmt_date(r.get("last_leave_date"))), cell_style),
+            Paragraph(ar(str(int(r.get("total_days", 0)))), cell_style),
+            Paragraph(ar(str(int(r.get("leave_count", 0)))), cell_style),
+            Paragraph(ar(safe_str(r.get("department"))), cell_style),
+            Paragraph(ar(fmt_id(r.get("employee_no"))), cell_style),
+            Paragraph(ar(safe_str(r.get("name_ar"))), cell_style),
+            Paragraph(ar(str(int(r.get("rank", 0)))), cell_style),
+        ]
+        rows.append(row)
+
+    col_widths = [2.4 * cm, 2.3 * cm, 2.3 * cm, 3.4 * cm, 2.8 * cm, 5.3 * cm, 1.0 * cm]
+
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for i in range(1, len(rows)):
+        style_cmds.append((
+            "BACKGROUND", (0, i), (-1, i),
+            colors.white if i % 2 == 0 else colors.HexColor("#f8fafc"),
+        ))
+
+    table.setStyle(TableStyle(style_cmds))
+    story.append(table)
+
+    total_employees = len(summary_df)
+    total_days_all = int(summary_df["total_days"].sum())
+    total_leaves_all = int(summary_df["leave_count"].sum())
+
+    story.append(Spacer(1, 12))
+    story.append(
+        Paragraph(
+            ar(
+                f"👥 عدد الموظفين: {total_employees}    |    "
+                f"📄 إجمالي عدد الإجازات: {total_leaves_all}    |    "
+                f"📅 إجمالي أيام الإجازات: {total_days_all}"
+            ),
+            total_style,
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()
+
+
 def render_leave_results_table(res: pd.DataFrame):
     display_df = res.copy()
     display_df["من"] = display_df["start_date"].apply(fmt_date)
@@ -2324,8 +2568,8 @@ def show_attachment_dialog_if_needed():
 
 
 with leave_root_tab:
-    register_tab, view_tab, sick_tab, edit_tab = st.tabs(
-        ["➕ تسجيل إجازة", "📊 عرض الإجازات", "🤒 الإجازات المرضية", "✏️ تعديل الإجازات"]
+    register_tab, view_tab, sick_tab, all_summary_tab, edit_tab = st.tabs(
+        ["➕ تسجيل إجازة", "📊 عرض الإجازات", "🤒 الإجازات المرضية", "📋 ملخص الإجازات", "✏️ تعديل الإجازات"]
     )
 
     with register_tab:
@@ -2850,6 +3094,105 @@ with leave_root_tab:
                     mime="application/pdf",
                     use_container_width=True,
                     key="sick_leave_pdf_download_btn"
+                )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with all_summary_tab:
+        st.markdown(
+            '<div class="card"><div class="card-title">📋 ملخص الإجازات الشامل لكل الموظفين</div>',
+            unsafe_allow_html=True
+        )
+
+        all_leaves_summary_src = load_leaves()
+
+        if all_leaves_summary_src.empty or "leave_type" not in all_leaves_summary_src.columns:
+            st.info("لا توجد بيانات إجازات بعد.")
+        else:
+            default_from = dt.date(2026, 1, 1)
+            default_to = dt.date.today()
+
+            c1, c2 = st.columns(2)
+            with c1:
+                allsum_date_from = st.date_input(
+                    "من تاريخ",
+                    value=default_from,
+                    key="allsum_leave_date_from"
+                )
+            with c2:
+                allsum_date_to = st.date_input(
+                    "إلى تاريخ",
+                    value=default_to,
+                    key="allsum_leave_date_to"
+                )
+
+            if allsum_date_to < allsum_date_from:
+                st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
+                allsum_summary_df = pd.DataFrame()
+            else:
+                allsum_summary_df = compute_all_leave_summary(
+                    all_leaves_summary_src,
+                    date_from=allsum_date_from,
+                    date_to=allsum_date_to,
+                )
+
+            allsum_period_label = f"{fmt_date(allsum_date_from)} → {fmt_date(allsum_date_to)}"
+
+            if allsum_summary_df.empty:
+                st.info("لا توجد إجازات مسجلة ضمن الفترة المحددة.")
+            else:
+                total_employees = len(allsum_summary_df)
+                total_leaves_all = int(allsum_summary_df["leave_count"].sum())
+                total_days_all = int(allsum_summary_df["total_days"].sum())
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("👥 عدد الموظفين", total_employees)
+                m2.metric("📄 إجمالي عدد الإجازات", total_leaves_all)
+                m3.metric("📅 إجمالي أيام الإجازات", total_days_all)
+
+                display_df = allsum_summary_df.copy()
+                display_df["الترتيب"] = display_df["rank"]
+                display_df["الموظف"] = display_df["name_ar"]
+                display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(fmt_id)
+                display_df["القسم"] = display_df["department"]
+                display_df["عدد الإجازات"] = display_df["leave_count"]
+                display_df["إجمالي أيام الإجازات"] = display_df["total_days"]
+                display_df["آخر إجازة"] = display_df["last_leave_date"].apply(fmt_date)
+                display_df["نوع آخر إجازة"] = display_df["آخر_نوع_إجازة"].apply(safe_str)
+                display_df["تفصيل الإجازات حسب النوع"] = display_df["نوع_الإجازات_تفصيلي"]
+
+                table_df = display_df[[
+                    "الترتيب",
+                    "الموظف",
+                    "الرقم الوظيفي",
+                    "القسم",
+                    "عدد الإجازات",
+                    "إجمالي أيام الإجازات",
+                    "آخر إجازة",
+                    "نوع آخر إجازة",
+                    "تفصيل الإجازات حسب النوع",
+                ]].reset_index(drop=True)
+
+                st.dataframe(
+                    table_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.markdown("### 📄 تصدير التقرير")
+                allsum_pdf_bytes = build_all_leave_summary_pdf(allsum_summary_df, year_label=allsum_period_label)
+                allsum_pdf_name = (
+                    f"all_leaves_summary_"
+                    f"{allsum_date_from.strftime('%Y%m%d')}_{allsum_date_to.strftime('%Y%m%d')}.pdf"
+                )
+
+                st.download_button(
+                    label="📄 تصدير ملخص الإجازات PDF",
+                    data=allsum_pdf_bytes,
+                    file_name=allsum_pdf_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="allsum_leave_pdf_download_btn"
                 )
 
         st.markdown("</div>", unsafe_allow_html=True)
