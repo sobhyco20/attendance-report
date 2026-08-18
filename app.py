@@ -401,6 +401,100 @@ div[data-testid="stButton"] button {
     font-weight: 600 !important;
 }
 
+/* =========================================
+   تصميم RTL حقيقي — نقل الشريط الجانبي لليمين
+   (نعكس ترتيب الحاوية الرئيسية فقط، بدون
+   ما نلمس اتجاه المحتوى الداخلي لكل عنصر)
+========================================= */
+div[data-testid="stAppViewContainer"] > div:first-child {
+    flex-direction: row-reverse !important;
+}
+
+section[data-testid="stSidebar"] {
+    border-left: 1px solid #334155;
+    border-right: none;
+}
+
+/* سهم طي/فتح الشريط الجانبي — نعكس اتجاهه */
+button[data-testid="stSidebarCollapseButton"] svg,
+button[data-testid="stBaseButton-headerNoPadding"] svg {
+    transform: scaleX(-1);
+}
+
+/* =========================================
+   الشريط العلوي (Header/Toolbar)
+========================================= */
+header[data-testid="stHeader"] {
+    background-color: #0f172a !important;
+}
+
+div[data-testid="stToolbar"] {
+    background-color: transparent !important;
+}
+
+/* =========================================
+   صناديق التنبيه (info / success / warning / error)
+========================================= */
+div[data-testid="stAlert"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+    color: #e5e7eb !important;
+}
+
+div[data-testid="stAlert"] p {
+    color: #e5e7eb !important;
+}
+
+/* =========================================
+   Expander (الأقسام القابلة للطي)
+========================================= */
+div[data-testid="stExpander"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+}
+
+div[data-testid="stExpander"] summary {
+    color: #e5e7eb !important;
+}
+
+/* =========================================
+   Checkbox / Radio / Toggle / Multiselect
+========================================= */
+div[data-testid="stCheckbox"] label p,
+div[data-testid="stRadio"] label p,
+div[data-testid="stToggle"] label p {
+    color: #e5e7eb !important;
+}
+
+div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+}
+
+div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+    background-color: #334155 !important;
+}
+
+/* =========================================
+   Metric
+========================================= */
+div[data-testid="stMetric"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+    padding: 12px !important;
+}
+
+/* =========================================
+   Tooltip / Popover عام
+========================================= */
+div[data-baseweb="tooltip"] {
+    background-color: #1e293b !important;
+    color: #e5e7eb !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
