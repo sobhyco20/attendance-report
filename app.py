@@ -269,8 +269,138 @@ div[data-testid="stDownloadButton"] button[kind="secondary"]:hover {
 div[data-testid="stDownloadButton"] button[kind="secondary"]:active {
 
     transform: scale(0.98);
-}            
-                                
+}
+
+/* =========================================
+   INPUTS — نص / تاريخ / ملاحظات
+========================================= */
+div[data-testid="stTextInput"] input,
+div[data-testid="stTextArea"] textarea,
+div[data-testid="stDateInput"] input,
+div[data-testid="stNumberInput"] input {
+    background-color: #1e293b !important;
+    color: #e5e7eb !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+}
+
+div[data-testid="stTextInput"] input::placeholder,
+div[data-testid="stTextArea"] textarea::placeholder {
+    color: #64748b !important;
+}
+
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stTextArea"] textarea:focus,
+div[data-testid="stDateInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 1px #3b82f6 !important;
+}
+
+/* عناوين الحقول (label) */
+div[data-testid="stWidgetLabel"] label p {
+    color: #cbd5e1 !important;
+    font-weight: 600 !important;
+}
+
+/* =========================================
+   SELECTBOX — القوائم المنسدلة
+========================================= */
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+    color: #e5e7eb !important;
+}
+
+/* قائمة الخيارات المنسدلة (تُعرض في portal منفصل) */
+div[data-baseweb="popover"] ul[role="listbox"],
+div[data-baseweb="menu"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+}
+
+div[data-baseweb="popover"] ul[role="listbox"] li,
+div[data-baseweb="menu"] li {
+    background-color: #1e293b !important;
+    color: #e5e7eb !important;
+}
+
+div[data-baseweb="popover"] ul[role="listbox"] li:hover,
+div[data-baseweb="menu"] li:hover {
+    background-color: #334155 !important;
+}
+
+/* تقويم اختيار التاريخ */
+div[data-baseweb="calendar"] {
+    background-color: #1e293b !important;
+}
+
+/* =========================================
+   FILE UPLOADER — رفع الملفات
+========================================= */
+div[data-testid="stFileUploaderDropzone"] {
+    background-color: #1e293b !important;
+    border: 1.5px dashed #334155 !important;
+    border-radius: 12px !important;
+}
+
+div[data-testid="stFileUploaderDropzone"] * {
+    color: #94a3b8 !important;
+}
+
+div[data-testid="stFileUploaderDropzone"] button {
+    background-color: #0f172a !important;
+    color: #e5e7eb !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+}
+
+/* =========================================
+   TABS — تبويبات احترافية
+========================================= */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 1px solid #334155;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent;
+    color: #94a3b8;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 10px 10px 0 0;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: #e5e7eb;
+    background-color: #1e293b;
+}
+
+.stTabs [aria-selected="true"] {
+    color: #38bdf8 !important;
+    background-color: #1e293b !important;
+    border-bottom: 2px solid #38bdf8 !important;
+}
+
+/* =========================================
+   عناوين الأقسام — تباعد موحّد
+========================================= */
+div[data-testid="stMarkdownContainer"] h2 {
+    margin-top: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #334155;
+}
+
+/* =========================================
+   الأزرار العامة (غير زر PDF)
+========================================= */
+div[data-testid="stButton"] button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
