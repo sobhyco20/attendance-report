@@ -500,9 +500,13 @@ input[type="checkbox"] {
     cursor: pointer;
 }
 
-/* مجموعة خيارات الراديو — تباعد وتنظيم أوضح */
+/* مجموعة خيارات الراديو — تباعد وتنظيم أوضح، وتبدأ من اليمين */
 div[data-testid="stRadio"] > div[role="radiogroup"] {
     gap: 18px;
+    display: flex !important;
+    flex-direction: row-reverse !important;
+    justify-content: flex-end !important;
+    width: 100%;
 }
 
 div[data-testid="stRadio"] label {
@@ -512,6 +516,10 @@ div[data-testid="stRadio"] label {
     padding: 8px 16px;
     transition: 0.2s;
     cursor: pointer;
+    display: flex !important;
+    flex-direction: row-reverse !important;
+    align-items: center;
+    gap: 8px;
 }
 
 div[data-testid="stRadio"] label:hover {
