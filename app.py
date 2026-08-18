@@ -485,6 +485,16 @@ div[data-testid="stExpander"] summary {
 /* =========================================
    Checkbox / Radio / Toggle / Multiselect
 ========================================= */
+div[data-testid="stRadio"] {
+    width: 100% !important;
+}
+
+div[data-testid="stWidgetLabel"] {
+    width: 100% !important;
+    text-align: right !important;
+    direction: rtl !important;
+}
+
 div[data-testid="stCheckbox"] label p,
 div[data-testid="stRadio"] label p,
 div[data-testid="stToggle"] label p {
