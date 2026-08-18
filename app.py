@@ -39,19 +39,44 @@ st.markdown("""
 <style>
 
 /* =========================
-   RTL
-========================= */
-html, body, .stApp {
-    direction: rtl;
-    text-align: right;
-}
-
-/* =========================
    الخلفية العامة
 ========================= */
 .stApp {
     background-color: #0f172a;
     color: #e5e7eb;
+}
+
+/* =========================
+   RTL — مستهدف على النصوص والعناوين فقط
+   (بدون فرضه على html/body أو على كل العناصر،
+   عشان ما تنكسر مكونات Streamlit الداخلية)
+========================= */
+.stMarkdown,
+h1, h2, h3, h4, h5, h6, p, label,
+div[data-testid="stMarkdownContainer"] {
+    direction: rtl;
+    text-align: right;
+}
+
+div[data-testid="stMarkdownContainer"] p {
+    color: #e5e7eb !important;
+}
+
+/* الجداول: نخلي بنيتها طبيعية (LTR) لتفادي انكسار الأعمدة،
+   والنص جوّاها يظهر يمين تلقائيًا */
+div[data-testid="stDataFrame"] {
+    direction: ltr;
+}
+div[data-testid="stDataFrame"] * {
+    text-align: right;
+}
+
+/* الأعمدة (columns): ترتيب طبيعي بدل عكسها بالقوة */
+div[data-testid="stHorizontalBlock"] {
+    direction: ltr;
+}
+div[data-testid="stHorizontalBlock"] > div {
+    direction: rtl;
 }
 
 /* =========================
@@ -63,6 +88,8 @@ html, body, .stApp {
     border-radius: 14px;
     padding: 16px;
     margin-bottom: 12px;
+    direction: rtl;
+    text-align: right;
 }
 
 /* عنوان الكارت */
@@ -81,6 +108,8 @@ html, body, .stApp {
     border-radius: 16px;
     padding: 22px;
     margin-bottom: 20px;
+    direction: rtl;
+    text-align: right;
 }
 
 .hero-title {
@@ -133,6 +162,8 @@ html, body, .stApp {
     padding: 12px;
     font-size: 13px;
     color: #cbd5f5;
+    direction: rtl;
+    text-align: right;
 }
 
 /* =========================
@@ -143,6 +174,8 @@ html, body, .stApp {
     border: 1px solid #334155;
     border-radius: 14px;
     padding: 16px;
+    direction: rtl;
+    text-align: right;
 }
 
 .net-title {
@@ -168,51 +201,11 @@ html, body, .stApp {
     max-width: 100% !important;
 }
 
-/* النصوص داخل markdown */
-div[data-testid="stMarkdownContainer"] p {
-    color: #e5e7eb !important;
-}
-
 /* sidebar */
 section[data-testid="stSidebar"] {
     background-color: #020617 !important;
+    direction: rtl;
 }
-
-            
-/* =========================
-   إجبار النص داخل الكروت يكون يمين
-========================= */
-
-.card,
-.hero-card,
-.small-kpi,
-.net-box,
-.grid-note {
-    text-align: right !important;
-    direction: rtl !important;
-}
-
-/* كل النصوص داخل الكروت */
-.card *,
-.hero-card *,
-.small-kpi *,
-.net-box *,
-.grid-note * {
-    text-align: right !important;
-    direction: rtl !important;
-}
-
-/* إصلاح عناصر Streamlit داخل الكروت */
-.card div[data-testid="stMarkdownContainer"],
-.hero-card div[data-testid="stMarkdownContainer"],
-.net-box div[data-testid="stMarkdownContainer"] {
-    text-align: right !important;
-}
-
-/* إصلاح العناوين */
-h1, h2, h3, h4, h5 {
-    text-align: right !important;
-}    
 
 .footer-hint {
     font-size: 12px;
