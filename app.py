@@ -403,16 +403,22 @@ div[data-testid="stButton"] button {
 
 /* =========================================
    تصميم RTL حقيقي — نقل الشريط الجانبي لليمين
-   (نعكس ترتيب الحاوية الرئيسية فقط، بدون
-   ما نلمس اتجاه المحتوى الداخلي لكل عنصر)
+   (باستخدام flex order بدل الاعتماد على ترتيب
+   الحاوية الأب، أضمن مع اختلاف بنية Streamlit)
 ========================================= */
-div[data-testid="stAppViewContainer"] > div:first-child {
-    flex-direction: row-reverse !important;
+div[data-testid="stAppViewContainer"] {
+    display: flex !important;
 }
 
 section[data-testid="stSidebar"] {
+    order: 2 !important;
     border-left: 1px solid #334155;
     border-right: none;
+}
+
+div[data-testid="stMain"],
+div.main {
+    order: 1 !important;
 }
 
 /* سهم طي/فتح الشريط الجانبي — نعكس اتجاهه */
