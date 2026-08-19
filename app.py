@@ -938,6 +938,12 @@ def get_employee_lookup(employees_df: pd.DataFrame | None) -> pd.DataFrame:
             emp[c] = ""
     emp["employee_id"] = emp["employee_id"].apply(fmt_id)
     emp["employee_no"] = emp["employee_no"].apply(fmt_id)
+    # لو الرقم الوظيفي فاضي لصف معين نستخدم الرقم الآخر بدلاً منه،
+    # عشان نضمن إن كل موظف له معرف واحد ثابت يُستخدم في كل الشاشات (تسجيل/عرض/تعديل الإجازات)
+    blank_id = emp["employee_id"] == ""
+    emp.loc[blank_id, "employee_id"] = emp.loc[blank_id, "employee_no"]
+    blank_no = emp["employee_no"] == ""
+    emp.loc[blank_no, "employee_no"] = emp.loc[blank_no, "employee_id"]
     return emp[["employee_id", "employee_no", "name_ar", "name_en", "department", "job_title"]].drop_duplicates()
 
 
@@ -2761,7 +2767,10 @@ with leave_root_tab:
                                 st.warning("اختر الموظف أولاً")
                                 st.session_state["show_leaves_result"] = False
                             else:
-                                df = df[df["employee_id"].astype(str).str.strip() == str(selected_emp_key).strip()]
+                                df = df[
+                                    (df["employee_id"].astype(str).str.strip() == str(selected_emp_key).strip()) |
+                                    (df["employee_no"].astype(str).str.strip() == str(selected_emp_key).strip())
+                                ]
                                 mask = (df["start_date"] <= pd.to_datetime(report_to)) & (df["end_date"] >= pd.to_datetime(report_from))
                                 st.session_state["leave_result_df"] = df[mask].sort_values(["start_date", "end_date"], ascending=[False, False]).copy()
                                 st.session_state["show_leaves_result"] = True
@@ -3254,7 +3263,8 @@ with leave_root_tab:
                         employee_leaves["start_date"] = pd.to_datetime(employee_leaves["start_date"], errors="coerce")
                         employee_leaves["end_date"] = pd.to_datetime(employee_leaves["end_date"], errors="coerce")
                         employee_leaves = employee_leaves[
-                            employee_leaves["employee_id"].astype(str).str.strip() == edit_employee_key
+                            (employee_leaves["employee_id"].astype(str).str.strip() == edit_employee_key) |
+                            (employee_leaves["employee_no"].astype(str).str.strip() == edit_employee_key)
                         ].sort_values(["start_date", "end_date"], ascending=[False, False]).copy()
 
                     if not employee_leaves.empty:
