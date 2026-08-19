@@ -3109,7 +3109,8 @@ with leave_root_tab:
         if all_leaves_summary_src.empty or "leave_type" not in all_leaves_summary_src.columns:
             st.info("لا توجد بيانات إجازات بعد.")
         else:
-            default_from = dt.date(2026, 1, 1)
+            valid_dates = pd.to_datetime(all_leaves_summary_src["start_date"], errors="coerce").dropna()
+            default_from = valid_dates.min().date() if not valid_dates.empty else dt.date(2020, 1, 1)
             default_to = dt.date.today()
 
             c1, c2 = st.columns(2)
