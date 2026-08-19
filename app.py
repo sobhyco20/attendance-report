@@ -3104,97 +3104,102 @@ with leave_root_tab:
             unsafe_allow_html=True
         )
 
-        all_leaves_summary_src = load_leaves()
+        try:
+            all_leaves_summary_src = load_leaves()
 
-        if all_leaves_summary_src.empty or "leave_type" not in all_leaves_summary_src.columns:
-            st.info("لا توجد بيانات إجازات بعد.")
-        else:
-            valid_dates = pd.to_datetime(all_leaves_summary_src["start_date"], errors="coerce").dropna()
-            default_from = valid_dates.min().date() if not valid_dates.empty else dt.date(2020, 1, 1)
-            default_to = dt.date.today()
-
-            c1, c2 = st.columns(2)
-            with c1:
-                allsum_date_from = st.date_input(
-                    "من تاريخ",
-                    value=default_from,
-                    key="allsum_leave_date_from"
-                )
-            with c2:
-                allsum_date_to = st.date_input(
-                    "إلى تاريخ",
-                    value=default_to,
-                    key="allsum_leave_date_to"
-                )
-
-            if allsum_date_to < allsum_date_from:
-                st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
-                allsum_summary_df = pd.DataFrame()
+            if all_leaves_summary_src.empty or "leave_type" not in all_leaves_summary_src.columns:
+                st.info("لا توجد بيانات إجازات بعد.")
             else:
-                allsum_summary_df = compute_all_leave_summary(
-                    all_leaves_summary_src,
-                    date_from=allsum_date_from,
-                    date_to=allsum_date_to,
-                )
+                valid_dates = pd.to_datetime(all_leaves_summary_src.get("start_date"), errors="coerce").dropna()
+                default_from = valid_dates.min().date() if not valid_dates.empty else dt.date(2020, 1, 1)
+                default_to = dt.date.today()
 
-            allsum_period_label = f"{fmt_date(allsum_date_from)} → {fmt_date(allsum_date_to)}"
+                c1, c2 = st.columns(2)
+                with c1:
+                    allsum_date_from = st.date_input(
+                        "من تاريخ",
+                        value=default_from,
+                        key="allsum_leave_date_from"
+                    )
+                with c2:
+                    allsum_date_to = st.date_input(
+                        "إلى تاريخ",
+                        value=default_to,
+                        key="allsum_leave_date_to"
+                    )
 
-            if allsum_summary_df.empty:
-                st.info("لا توجد إجازات مسجلة ضمن الفترة المحددة.")
-            else:
-                total_employees = len(allsum_summary_df)
-                total_leaves_all = int(allsum_summary_df["leave_count"].sum())
-                total_days_all = int(allsum_summary_df["total_days"].sum())
+                if allsum_date_to < allsum_date_from:
+                    st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
+                    allsum_summary_df = pd.DataFrame()
+                else:
+                    allsum_summary_df = compute_all_leave_summary(
+                        all_leaves_summary_src,
+                        date_from=allsum_date_from,
+                        date_to=allsum_date_to,
+                    )
 
-                m1, m2, m3 = st.columns(3)
-                m1.metric("👥 عدد الموظفين", total_employees)
-                m2.metric("📄 إجمالي عدد الإجازات", total_leaves_all)
-                m3.metric("📅 إجمالي أيام الإجازات", total_days_all)
+                allsum_period_label = f"{fmt_date(allsum_date_from)} → {fmt_date(allsum_date_to)}"
 
-                display_df = allsum_summary_df.copy()
-                display_df["الترتيب"] = display_df["rank"]
-                display_df["الموظف"] = display_df["name_ar"]
-                display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(fmt_id)
-                display_df["القسم"] = display_df["department"]
-                display_df["عدد الإجازات"] = display_df["leave_count"]
-                display_df["إجمالي أيام الإجازات"] = display_df["total_days"]
-                display_df["آخر إجازة"] = display_df["last_leave_date"].apply(fmt_date)
-                display_df["نوع آخر إجازة"] = display_df["آخر_نوع_إجازة"].apply(safe_str)
-                display_df["تفصيل الإجازات حسب النوع"] = display_df["نوع_الإجازات_تفصيلي"]
+                if allsum_summary_df.empty:
+                    st.info("لا توجد إجازات مسجلة ضمن الفترة المحددة.")
+                else:
+                    total_employees = len(allsum_summary_df)
+                    total_leaves_all = int(allsum_summary_df["leave_count"].sum())
+                    total_days_all = int(allsum_summary_df["total_days"].sum())
 
-                table_df = display_df[[
-                    "الترتيب",
-                    "الموظف",
-                    "الرقم الوظيفي",
-                    "القسم",
-                    "عدد الإجازات",
-                    "إجمالي أيام الإجازات",
-                    "آخر إجازة",
-                    "نوع آخر إجازة",
-                    "تفصيل الإجازات حسب النوع",
-                ]].reset_index(drop=True)
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("👥 عدد الموظفين", total_employees)
+                    m2.metric("📄 إجمالي عدد الإجازات", total_leaves_all)
+                    m3.metric("📅 إجمالي أيام الإجازات", total_days_all)
 
-                st.dataframe(
-                    table_df,
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                    display_df = allsum_summary_df.copy()
+                    display_df["الترتيب"] = display_df["rank"]
+                    display_df["الموظف"] = display_df["name_ar"]
+                    display_df["الرقم الوظيفي"] = display_df["employee_no"].apply(fmt_id)
+                    display_df["القسم"] = display_df["department"]
+                    display_df["عدد الإجازات"] = display_df["leave_count"]
+                    display_df["إجمالي أيام الإجازات"] = display_df["total_days"]
+                    display_df["آخر إجازة"] = display_df["last_leave_date"].apply(fmt_date)
+                    display_df["نوع آخر إجازة"] = display_df["آخر_نوع_إجازة"].apply(safe_str)
+                    display_df["تفصيل الإجازات حسب النوع"] = display_df["نوع_الإجازات_تفصيلي"]
 
-                st.markdown("### 📄 تصدير التقرير")
-                allsum_pdf_bytes = build_all_leave_summary_pdf(allsum_summary_df, year_label=allsum_period_label)
-                allsum_pdf_name = (
-                    f"all_leaves_summary_"
-                    f"{allsum_date_from.strftime('%Y%m%d')}_{allsum_date_to.strftime('%Y%m%d')}.pdf"
-                )
+                    table_df = display_df[[
+                        "الترتيب",
+                        "الموظف",
+                        "الرقم الوظيفي",
+                        "القسم",
+                        "عدد الإجازات",
+                        "إجمالي أيام الإجازات",
+                        "آخر إجازة",
+                        "نوع آخر إجازة",
+                        "تفصيل الإجازات حسب النوع",
+                    ]].reset_index(drop=True)
 
-                st.download_button(
-                    label="📄 تصدير ملخص الإجازات PDF",
-                    data=allsum_pdf_bytes,
-                    file_name=allsum_pdf_name,
-                    mime="application/pdf",
-                    use_container_width=True,
-                    key="allsum_leave_pdf_download_btn"
-                )
+                    st.dataframe(
+                        table_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    st.markdown("### 📄 تصدير التقرير")
+                    try:
+                        allsum_pdf_bytes = build_all_leave_summary_pdf(allsum_summary_df, year_label=allsum_period_label)
+                        allsum_pdf_name = (
+                            f"all_leaves_summary_"
+                            f"{allsum_date_from.strftime('%Y%m%d')}_{allsum_date_to.strftime('%Y%m%d')}.pdf"
+                        )
+                        st.download_button(
+                            label="📄 تصدير ملخص الإجازات PDF",
+                            data=allsum_pdf_bytes,
+                            file_name=allsum_pdf_name,
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="allsum_leave_pdf_download_btn"
+                        )
+                    except Exception as pdf_err:
+                        st.warning(f"⚠️ تعذّر إنشاء ملف PDF لهذا التقرير: {pdf_err}")
+        except Exception as tab_err:
+            st.error(f"⚠️ حدث خطأ أثناء عرض ملخص الإجازات: {tab_err}")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
