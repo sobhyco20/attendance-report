@@ -26,6 +26,14 @@ from reportlab.lib.utils import ImageReader
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+# --- Compatibility patch ---
+# streamlit_cookies_manager يستخدم @st.cache وهي دالة اتشالت من ستريمليت
+# في الإصدارات الحديثة (اتستبدلت بـ st.cache_data و st.cache_resource).
+# السطرين دول بيضيفوا st.cache كـ alias لـ st.cache_data لو مش موجودة،
+# عشان نفادي الـ AttributeError من غير ما نلمس المكتبة أو ننزّل نسخة ستريمليت.
+if not hasattr(st, "cache"):
+    st.cache = st.cache_data
+
 from streamlit_cookies_manager import EncryptedCookieManager
 
 
