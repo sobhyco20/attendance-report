@@ -803,6 +803,18 @@ def fmt_id(x):
         return s
 
 
+def _first_nonempty(series):
+    """يرجّع أول قيمة نصية غير فاضية في مجموعة (Series)، وإلا نص فاضي.
+    مستخدمة عشان نختار اسم/إدارة تمثيلية للموظف بعد التجميع حسب الرقم
+    الوظيفي فقط، من غير ما نضطر ندخل الاسم نفسه في مفتاح التجميع (لو فيه
+    أكتر من صيغة كتابة لاسم نفس الموظف زي "أحمد"/"احمد")."""
+    for v in series:
+        v = safe_str(v)
+        if v:
+            return v
+    return ""
+
+
 def fmt_date(d):
     try:
         return pd.to_datetime(d).strftime("%d-%m-%Y")
@@ -1150,16 +1162,19 @@ def compute_sick_leave_summary(
     x["days_count"] = (x["end_date"] - x["start_date"]).dt.days + 1
     x["days_count"] = x["days_count"].clip(lower=1)
 
-    x["employee_id"] = x["employee_id"].apply(safe_str)
+    # 🔥 التجميع حسب الرقم الوظيفي فقط (مش الاسم/الإدارة)، عشان لو اسم نفس
+    # الموظف اتسجل بأكتر من صيغة كتابة (زي "أحمد"/"احمد") ما يتحسبش كموظف
+    # تاني في الملخص. الاسم والإدارة المعروضين بياخدوا أول قيمة غير فاضية.
+    x["employee_id"] = x["employee_id"].apply(fmt_id)
     x["employee_no"] = x["employee_no"].apply(fmt_id)
-    x["name_ar"] = x["name_ar"].apply(safe_str)
-    x["department"] = x["department"].apply(safe_str)
 
     grouped = x.groupby(
-        ["employee_id", "employee_no", "name_ar", "department"],
+        ["employee_id", "employee_no"],
         dropna=False,
         as_index=False,
     ).agg(
+        name_ar=("name_ar", _first_nonempty),
+        department=("department", _first_nonempty),
         leave_count=("leave_id", "count"),
         total_days=("days_count", "sum"),
         last_leave_date=("end_date", "max"),
@@ -1225,16 +1240,19 @@ def compute_all_leave_summary(
     x["days_count"] = (x["end_date"] - x["start_date"]).dt.days + 1
     x["days_count"] = x["days_count"].clip(lower=1)
 
-    x["employee_id"] = x["employee_id"].apply(safe_str)
+    # 🔥 التجميع حسب الرقم الوظيفي فقط (مش الاسم/الإدارة)، عشان لو اسم نفس
+    # الموظف اتسجل بأكتر من صيغة كتابة (زي "أحمد"/"احمد") ما يتحسبش كموظف
+    # تاني في الملخص. الاسم والإدارة المعروضين بياخدوا أول قيمة غير فاضية.
+    x["employee_id"] = x["employee_id"].apply(fmt_id)
     x["employee_no"] = x["employee_no"].apply(fmt_id)
-    x["name_ar"] = x["name_ar"].apply(safe_str)
-    x["department"] = x["department"].apply(safe_str)
 
     grouped = x.groupby(
-        ["employee_id", "employee_no", "name_ar", "department"],
+        ["employee_id", "employee_no"],
         dropna=False,
         as_index=False,
     ).agg(
+        name_ar=("name_ar", _first_nonempty),
+        department=("department", _first_nonempty),
         leave_count=("leave_id", "count"),
         total_days=("days_count", "sum"),
         last_leave_date=("end_date", "max"),
@@ -1243,27 +1261,27 @@ def compute_all_leave_summary(
     # نوع آخر إجازة لكل موظف (بعد ترتيب السجلات بالتاريخ)
     last_type_df = (
         x.sort_values("end_date")
-        .groupby(["employee_id", "employee_no", "name_ar", "department"], dropna=False)
-        .tail(1)[["employee_id", "employee_no", "name_ar", "department", "leave_type"]]
+        .groupby(["employee_id", "employee_no"], dropna=False)
+        .tail(1)[["employee_id", "employee_no", "leave_type"]]
         .rename(columns={"leave_type": "آخر_نوع_إجازة"})
     )
     grouped = grouped.merge(
-        last_type_df, on=["employee_id", "employee_no", "name_ar", "department"], how="left"
+        last_type_df, on=["employee_id", "employee_no"], how="left"
     )
 
     # عدد أيام كل نوع إجازة على حدة (سنوية / مرضية / بدون راتب / ...) لكل موظف
     by_type = (
-        x.groupby(["employee_id", "employee_no", "name_ar", "department", "leave_type"], dropna=False)["days_count"]
+        x.groupby(["employee_id", "employee_no", "leave_type"], dropna=False)["days_count"]
         .sum()
         .reset_index()
     )
     breakdown_map = {}
-    for (eid, eno, nm, dep), g in by_type.groupby(["employee_id", "employee_no", "name_ar", "department"]):
+    for (eid, eno), g in by_type.groupby(["employee_id", "employee_no"]):
         parts = [f"{safe_str(t)}: {int(d)}" for t, d in zip(g["leave_type"], g["days_count"])]
-        breakdown_map[(eid, eno, nm, dep)] = " | ".join(parts)
+        breakdown_map[(eid, eno)] = " | ".join(parts)
 
     grouped["نوع_الإجازات_تفصيلي"] = grouped.apply(
-        lambda r: breakdown_map.get((r["employee_id"], r["employee_no"], r["name_ar"], r["department"]), ""),
+        lambda r: breakdown_map.get((r["employee_id"], r["employee_no"]), ""),
         axis=1,
     )
 
@@ -1914,8 +1932,15 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
         errors="coerce"
     )
 
+    # 🔥 توحيد الرقم الوظيفي قبل التجميع، ونجمع حسب الرقم الوظيفي فقط (مش
+    # الاسم). ده عشان لو نفس الموظف اتسجل اسمه بصيغتين مختلفتين شوية (زي
+    # "محمد أحمد الحميد" و"محمد احمد الحميد" - فرق همزة بسيط) ما يتقسمش
+    # كأنه موظفين مختلفين في التقرير، طول ما رقمه الوظيفي واحد.
+    pdf_df["employee_id"] = pdf_df["employee_id"].apply(fmt_id)
+    pdf_df["employee_no"] = pdf_df["employee_no"].apply(fmt_id)
+
     grouped = pdf_df.groupby(
-        ["employee_id", "employee_no", "name_ar"],
+        ["employee_id", "employee_no"],
         dropna=False
     )
 
@@ -1928,11 +1953,16 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
 
     for (
         employee_id,
-        employee_no,
-        employee_name
+        employee_no
     ), emp_df in grouped:
 
-        employee_name = safe_str(employee_name)
+        # الاسم المعروض: أول اسم غير فاضي مسجل لنفس الرقم الوظيفي
+        employee_name = ""
+        for _nm in emp_df["name_ar"]:
+            _nm = safe_str(_nm)
+            if _nm:
+                employee_name = _nm
+                break
         employee_no = fmt_id(employee_no)
 
         leave_count = len(emp_df)
