@@ -2077,11 +2077,6 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
                 ),
 
                 Paragraph(
-                    ar("المرفق"),
-                    header_style
-                ),
-
-                Paragraph(
                     ar("ملاحظات"),
                     header_style
                 ),
@@ -2106,10 +2101,6 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
             end_date = fmt_date(
                 r.get("end_date")
             )
-
-            attachment_name = safe_str(
-                r.get("attachment_name", "")
-            ) or "لا يوجد"
 
             notes_text = safe_str(
                 r.get("notes", "")
@@ -2157,11 +2148,6 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
                     ),
 
                     Paragraph(
-                        ar(attachment_name),
-                        cell_style
-                    ),
-
-                    Paragraph(
                         ar(notes_text),
                         notes_style
                     ),
@@ -2180,8 +2166,7 @@ def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
                 4.0 * cm,
                 4.0 * cm,
                 4.0 * cm,
-                2.7 * cm,
-                3.1 * cm,
+                5.8 * cm,
             ],
             repeatRows=1,
         )
@@ -2660,7 +2645,6 @@ def render_leave_results_table(res: pd.DataFrame):
         lambda r: leave_days_count(r.get("start_date"), r.get("end_date")), axis=1
     )
     display_df["الحالة"] = display_df["status"].apply(safe_str)
-    display_df["المرفق"] = display_df["attachment_name"].apply(lambda x: "📎" if safe_str(x) else "—")
     display_df["ملاحظات"] = display_df["notes"].apply(safe_str)
 
     table_df = display_df[[
@@ -2671,7 +2655,6 @@ def render_leave_results_table(res: pd.DataFrame):
         "إلى",
         "عدد الأيام",
         "الحالة",
-        "المرفق",
         "ملاحظات",
     ]].reset_index(drop=True)
 
@@ -3807,27 +3790,36 @@ with emp_report_tab:
             for _, r in employee_lookup.iterrows()
         }
 
-        c1, c2, c3 = st.columns([2, 1, 1])
-        with c1:
-            er_selected_emp = st.selectbox(
-                "اختر الموظف",
-                options=list(options_map_er.keys()),
-                index=None,
-                placeholder="ابحث باسم الموظف...",
-                key="emp_report_selected_emp",
-            )
-        with c2:
-            er_from = st.date_input("من تاريخ", key="emp_report_from")
-        with c3:
-            er_to = st.date_input("إلى تاريخ", key="emp_report_to")
+        # ملحوظة أداء: العناصر دي متحطة جوه st.form عشان اختيار الموظف أو
+        # تغيير التاريخ ما يعملوش إعادة تحميل للصفحة كلها في كل مرة. البرنامج
+        # ميبدأش يجمّع ويجهّز التقرير إلا لما تدخل كل البيانات وتضغط زرار
+        # "عرض التقرير" (أو "مسح") - فمفيش انتظار غير مرة واحدة بس عند الضغط.
+        with st.form("emp_report_form"):
+            c1, c2, c3 = st.columns([2, 1, 1])
+            with c1:
+                er_selected_emp = st.selectbox(
+                    "اختر الموظف",
+                    options=list(options_map_er.keys()),
+                    index=None,
+                    placeholder="ابحث باسم الموظف...",
+                    key="emp_report_selected_emp",
+                )
+            with c2:
+                er_from = st.date_input(
+                    "من تاريخ",
+                    value=dt.date(dt.date.today().year, 1, 1),
+                    key="emp_report_from",
+                )
+            with c3:
+                er_to = st.date_input("إلى تاريخ", key="emp_report_to")
+
+            btn1, btn2 = st.columns(2)
+            with btn1:
+                er_show_clicked = st.form_submit_button("📄 عرض التقرير", use_container_width=True)
+            with btn2:
+                er_clear_clicked = st.form_submit_button("🧹 مسح", use_container_width=True)
 
         er_selected_key = str(options_map_er[er_selected_emp]) if er_selected_emp else ""
-
-        btn1, btn2 = st.columns(2)
-        with btn1:
-            er_show_clicked = st.button("📄 عرض التقرير", use_container_width=True, key="emp_report_show_btn")
-        with btn2:
-            er_clear_clicked = st.button("🧹 مسح", use_container_width=True, key="emp_report_clear_btn")
 
         if "emp_report_show_result" not in st.session_state:
             st.session_state["emp_report_show_result"] = False
