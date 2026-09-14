@@ -1764,7 +1764,7 @@ with st.sidebar:
 
 
 
-main_tab, leave_root_tab = st.tabs(["📊 تقرير البصمة", "🏖️ إدارة الإجازات"])
+main_tab, leave_root_tab, emp_report_tab = st.tabs(["📊 تقرير البصمة", "🏖️ إدارة الإجازات", "📄 تقرير الموظف"])
 
 def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
 
@@ -3751,3 +3751,103 @@ with main_tab:
                     st.session_state["logged_in"] = False
                     st.session_state["login_user"] = ""
                     st.rerun()
+
+
+# =========================
+# تبويب جديد: تقرير الموظف (اختيار موظف + فترة + تصدير PDF)
+# نفس منطق فلترة الإجازات المستخدم في "إدارة الإجازات ← عرض الإجازات"،
+# لكن معروض هنا كتبويب رئيسي مباشر لسهولة الوصول السريع لتقرير موظف واحد.
+# =========================
+with emp_report_tab:
+    st.markdown('<div class="card"><div class="card-title">📄 تقرير الموظف</div>', unsafe_allow_html=True)
+
+    if employee_lookup.empty:
+        st.info("ملف الموظفين غير متوفر.")
+    else:
+        options_map_er = {
+            employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
+            for _, r in employee_lookup.iterrows()
+        }
+
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            er_selected_emp = st.selectbox(
+                "اختر الموظف",
+                options=list(options_map_er.keys()),
+                index=None,
+                placeholder="ابحث باسم الموظف...",
+                key="emp_report_selected_emp",
+            )
+        with c2:
+            er_from = st.date_input("من تاريخ", key="emp_report_from")
+        with c3:
+            er_to = st.date_input("إلى تاريخ", key="emp_report_to")
+
+        er_selected_key = str(options_map_er[er_selected_emp]) if er_selected_emp else ""
+
+        btn1, btn2 = st.columns(2)
+        with btn1:
+            er_show_clicked = st.button("📄 عرض التقرير", use_container_width=True, key="emp_report_show_btn")
+        with btn2:
+            er_clear_clicked = st.button("🧹 مسح", use_container_width=True, key="emp_report_clear_btn")
+
+        if "emp_report_show_result" not in st.session_state:
+            st.session_state["emp_report_show_result"] = False
+        if "emp_report_result_df" not in st.session_state:
+            st.session_state["emp_report_result_df"] = pd.DataFrame()
+
+        if er_clear_clicked:
+            st.session_state["emp_report_show_result"] = False
+            st.session_state["emp_report_result_df"] = pd.DataFrame()
+            st.rerun()
+
+        if er_show_clicked:
+            if not er_selected_emp:
+                st.warning("اختر الموظف أولاً")
+                st.session_state["emp_report_show_result"] = False
+            else:
+                df = load_leaves().copy()
+                if df.empty:
+                    st.session_state["emp_report_show_result"] = True
+                    st.session_state["emp_report_result_df"] = pd.DataFrame()
+                else:
+                    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+                    df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
+
+                    df = df[
+                        (df["employee_id"].astype(str).str.strip() == er_selected_key.strip()) |
+                        (df["employee_no"].astype(str).str.strip() == er_selected_key.strip())
+                    ]
+                    mask = (df["start_date"] <= pd.to_datetime(er_to)) & (df["end_date"] >= pd.to_datetime(er_from))
+                    st.session_state["emp_report_result_df"] = df[mask].sort_values(
+                        ["start_date", "end_date"], ascending=[False, False]
+                    ).copy()
+                    st.session_state["emp_report_show_result"] = True
+
+        if st.session_state.get("emp_report_show_result", False):
+            res = st.session_state.get("emp_report_result_df", pd.DataFrame())
+
+            if res is None or res.empty:
+                st.info("لا توجد إجازات لهذا الموظف ضمن الفترة المحددة.")
+            else:
+                st.write(f"عدد السجلات: {len(res)}")
+                render_leave_results_table(res)
+
+                st.markdown("---")
+                st.markdown("### 📊 تقرير إجازات الموظف")
+                emp_name_for_totals = safe_str(res["name_ar"].iloc[0]) if "name_ar" in res.columns else ""
+                render_leave_totals(res, employee_name=emp_name_for_totals)
+
+                pdf_bytes = build_leaves_pdf(res)
+                pdf_name = f"leave_report_{sanitize_filename(er_selected_key)}.pdf"
+
+                st.download_button(
+                    label="📄 تصدير تقرير الموظف PDF",
+                    data=pdf_bytes,
+                    file_name=pdf_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="emp_report_pdf_download_btn",
+                )
+
+    st.markdown("</div>", unsafe_allow_html=True)
