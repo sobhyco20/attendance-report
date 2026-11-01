@@ -67,6 +67,68 @@ def _norm_str(x) -> str:
     return str(x).strip()
 
 
+# ---------------------------------------------------------
+# تحويل عمود البصمة إلى تاريخ/وقت بشكل آمن مهما كان شكله
+# (وقت فقط، تاريخ ووقت، نص، رقم إكسل، خلايا فارغة، عمود غير موجود)
+# ---------------------------------------------------------
+_EXCEL_BASE = pd.Timestamp("1899-12-30")
+_TIME_BASE_DATE = dt.date(1900, 1, 1)
+
+
+def _punch_value_to_ts(v):
+    if v is None:
+        return pd.NaT
+    if isinstance(v, float) and pd.isna(v):
+        return pd.NaT
+    if isinstance(v, (pd.Timestamp, dt.datetime)):
+        return pd.Timestamp(v)
+    if isinstance(v, dt.time):
+        return pd.Timestamp(dt.datetime.combine(_TIME_BASE_DATE, v))
+    if isinstance(v, (int, float)):
+        try:
+            if 0 <= float(v) < 1:  # جزء من اليوم (وقت فقط في إكسل)
+                return pd.Timestamp(_TIME_BASE_DATE) + pd.Timedelta(days=float(v))
+            return _EXCEL_BASE + pd.Timedelta(days=float(v))  # رقم تاريخ إكسل
+        except Exception:
+            return pd.NaT
+    s = str(v).strip()
+    if not s or s in {"-", "--", "nan", "NaT", "None"}:
+        return pd.NaT
+    s = s.replace("ص", "AM").replace("م", "PM")
+    ts = pd.to_datetime(s, errors="coerce")
+    return ts if pd.notna(ts) else pd.NaT
+
+
+def _to_punch_datetime(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    s = df[col]
+    if isinstance(s, pd.DataFrame):  # لو العمود مكرر في الملف
+        s = s.iloc[:, 0]
+    out = s.apply(_punch_value_to_ts)
+    return pd.to_datetime(out, errors="coerce")
+
+
+# أسماء الأعمدة المقبولة في ملف البصمة (بدون حساسية لحالة الأحرف)
+ATTENDANCE_COLUMN_ALIASES = {
+    "employee id": "employee_id",
+    "first name": "name_att",
+    "department": "department_att",
+    "date": "date",
+    "weekday": "weekday_raw",
+    "first punch": "first_punch",
+    "first in": "first_punch",
+    "check in": "first_punch",
+    "time in": "first_punch",
+    "in": "first_punch",
+    "last punch": "last_punch",
+    "last out": "last_punch",
+    "check out": "last_punch",
+    "time out": "last_punch",
+    "out": "last_punch",
+}
+
+
 def _detect_attendance_rule(emp_row: pd.Series) -> str:
     candidates = [
         "attendance_calculation",
@@ -189,27 +251,32 @@ def process_attendance(
     df = _read_attendance_any_format(attendance_file)
     leaves_df = _prepare_leaves_df(approved_leaves_df)
 
-    df = df.rename(
-        columns={
-            "Employee ID": "employee_id",
-            "First Name": "name_att",
-            "Department": "department_att",
-            "Date": "date",
-            "Weekday": "weekday_raw",
-            "First Punch": "first_punch",
-            "Last Punch": "last_punch",
-        }
-    )
+    # توحيد أسماء الأعمدة (حذف المسافات الزائدة وتجاهل حالة الأحرف)
+    df.columns = [str(c).strip() for c in df.columns]
+    rename_cols = {}
+    used_targets = set()
+    for c in df.columns:
+        target = ATTENDANCE_COLUMN_ALIASES.get(c.lower())
+        if target and target not in used_targets:
+            rename_cols[c] = target
+            used_targets.add(target)
+    df = df.rename(columns=rename_cols)
 
     if "employee_id" not in df.columns or "date" not in df.columns:
         raise KeyError(f"Attendance missing required columns. Available: {list(df.columns)}")
+
+    if "first_punch" not in df.columns and "last_punch" not in df.columns:
+        raise KeyError(
+            "ملف البصمة لا يحتوي على عمودي First Punch / Last Punch. "
+            f"الأعمدة الموجودة: {list(df.columns)}"
+        )
 
     df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
     df["weekday"] = df["date"].dt.day_name()
     df["weekday_ar"] = df["weekday"].map(WEEKDAY_AR).fillna(df["weekday"])
 
-    fp = pd.to_datetime(df.get("first_punch"), errors="coerce")
-    lp = pd.to_datetime(df.get("last_punch"), errors="coerce")
+    fp = _to_punch_datetime(df, "first_punch")
+    lp = _to_punch_datetime(df, "last_punch")
 
     df["first_punch_dt"] = fp
     df["last_punch_dt"] = lp
@@ -335,7 +402,10 @@ def process_attendance(
 
         emp_df["is_workday"] = emp_df.apply(lambda r: is_workday(r["weekday"], r["date"]), axis=1)
 
-        any_date = emp_df["date"].dropna().iloc[0]
+        valid_dates = emp_df["date"].dropna()
+        if valid_dates.empty:
+            continue
+        any_date = valid_dates.iloc[0]
         start_date = any_date.replace(day=8)
         if any_date.day < 8:
             start_date = (start_date - pd.DateOffset(months=1))
@@ -415,7 +485,7 @@ def process_attendance(
                     return 0
                 if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
-                if row["first_td"] is None:
+                if pd.isna(row["first_td"]):
                     return 0
 
                 _, late_limit_day, _ = shift_params_for_date(row.get("date"))
@@ -428,7 +498,7 @@ def process_attendance(
                     return 0
                 if not row["is_workday"] or _is_eid_holiday(row.get("date")):
                     return 0
-                if row["last_td"] is None:
+                if pd.isna(row["last_td"]):
                     return 0
 
                 _, _, end_td_day = shift_params_for_date(row.get("date"))
@@ -505,6 +575,8 @@ def process_attendance(
                 )
             )
 
+            agg["first_in_dt"] = pd.to_datetime(agg["first_in_dt"], errors="coerce")
+            agg["last_out_dt"] = pd.to_datetime(agg["last_out_dt"], errors="coerce")
             agg["first_punch_time"] = agg["first_in_dt"].dt.time
             agg["last_punch_time"] = agg["last_out_dt"].dt.time
             agg["first_td"] = agg["first_punch_time"].apply(time_to_td)
@@ -533,21 +605,21 @@ def process_attendance(
 
                     _, late_limit_day, end_td_day = shift_params_for_date(row.get("date_only"))
 
-                    if row["first_td"] is None:
+                    if pd.isna(row["first_td"]):
                         late_m = 0
                     elif row["first_td"] <= late_limit_day:
                         late_m = 0
                     else:
                         late_m = int((row["first_td"] - late_limit_day).total_seconds() // 60)
 
-                    if row["last_td"] is None:
+                    if pd.isna(row["last_td"]):
                         overtime_m = 0
                     elif row["last_td"] <= end_td_day:
                         overtime_m = 0
                     else:
                         overtime_m = int((row["last_td"] - end_td_day).total_seconds() // 60)
 
-                    if row["last_td"] is None:
+                    if pd.isna(row["last_td"]):
                         early_leave_m = 0
                     elif row["last_td"] >= end_td_day:
                         early_leave_m = 0
