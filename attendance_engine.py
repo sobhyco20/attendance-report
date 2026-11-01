@@ -286,8 +286,9 @@ def process_attendance(
 
     df["first_punch_dt"] = fp
     df["last_punch_dt"] = lp
-    df["first_punch_time"] = fp.dt.time
-    df["last_punch_time"] = lp.dt.time
+    # الأيام بدون بصمة تكون فارغة (None) بدل NaT حتى لا تتعطل شاشات العرض
+    df["first_punch_time"] = fp.dt.time.astype(object).where(fp.notna(), None)
+    df["last_punch_time"] = lp.dt.time.astype(object).where(lp.notna(), None)
 
     if employees_df is not None and not employees_df.empty:
         emp = employees_df.copy()
@@ -583,8 +584,8 @@ def process_attendance(
 
             agg["first_in_dt"] = pd.to_datetime(agg["first_in_dt"], errors="coerce")
             agg["last_out_dt"] = pd.to_datetime(agg["last_out_dt"], errors="coerce")
-            agg["first_punch_time"] = agg["first_in_dt"].dt.time
-            agg["last_punch_time"] = agg["last_out_dt"].dt.time
+            agg["first_punch_time"] = agg["first_in_dt"].dt.time.astype(object).where(agg["first_in_dt"].notna(), None)
+            agg["last_punch_time"] = agg["last_out_dt"].dt.time.astype(object).where(agg["last_out_dt"].notna(), None)
             agg["first_td"] = agg["first_punch_time"].apply(time_to_td)
             agg["last_td"] = agg["last_punch_time"].apply(time_to_td)
 
