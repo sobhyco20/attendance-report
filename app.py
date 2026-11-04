@@ -3053,10 +3053,21 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    st.markdown("### 📄 ملف البصمة")
+    uploaded_file = st.file_uploader("ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
+    s1, s2 = st.columns(2)
+    with s1:
+        start_time = st.time_input("🕗 بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
+    with s2:
+        grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
+    st.caption("ℹ️ التقرير يظهر تلقائيًا في تبويب (البصمة والحضور) بمجرد رفع الملف.")
+    st.divider()
+
     st.markdown("### 🧭 دليل الاستخدام")
-    st.caption("📊 **البصمة والحضور:** ارفع ملف البصمة، سجّل الغياب والأعذار، وراجع السجل.")
+    st.caption("📊 **البصمة والحضور:** تقرير البصمة وسجل الغياب والأعذار.")
     st.caption("🏖️ **الإجازات:** تسجيل وعرض وتعديل الإجازات وتقارير المرضية.")
     st.caption("📄 **تقرير الموظف:** تقرير إجازات موظف واحد لفترة محددة.")
+    st.caption("📝 **التسجيل:** الإجازات والغياب والتأخير تُسجَّل من Google Sheet، والموقع يقرأ منها.")
 
     st.markdown(
         """
@@ -3849,38 +3860,20 @@ with leave_root_tab:
 #   3) سجل الغياب والأعذار  (عرض + حذف + تصدير Excel)
 # =========================================================
 with att_root_tab:
-    att_report_tab, abs_register_tab, abs_log_tab = st.tabs(
-        ["📈 تقرير البصمة", "📝 تسجيل غياب / تأخير", "📋 سجل الغياب والأعذار"]
+    att_report_tab, abs_log_tab = st.tabs(
+        ["📈 تقرير البصمة", "📋 سجل الغياب والأعذار"]
     )
 
     # -----------------------------------------------------
     # 1) تقرير البصمة
     # -----------------------------------------------------
     with att_report_tab:
-        st.markdown(
-            '<div class="step-title"><span class="step-badge">1</span>رفع ملف البصمة وإعدادات الدوام</div>',
-            unsafe_allow_html=True,
-        )
-        u1, u2, u3 = st.columns([2, 1, 1])
-        with u1:
-            uploaded_file = st.file_uploader(
-                "📄 ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file"
-            )
-        with u2:
-            start_time = st.time_input(
-                "🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time"
-            )
-        with u3:
-            grace = st.number_input(
-                "⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace"
-            )
-
         if not uploaded_file:
             st.markdown(
                 """
                 <div class="hero-card">
                   <div class="hero-title">📊 لوحة تقرير البصمة</div>
-                  <div class="hero-sub">ارفع ملف البصمة من الأعلى لعرض التقرير الكامل: التأخير، الخروج المبكر، الغياب (بإذن / بدون إذن)، والإجازات المعتمدة.</div>
+                  <div class="hero-sub">ارفع ملف البصمة من القائمة الجانبية لعرض التقرير الكامل: التأخير، الخروج المبكر، الغياب (بإذن / بدون إذن)، والإجازات المعتمدة.</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -3958,7 +3951,7 @@ with att_root_tab:
 
                 # ---------- بطاقة الموظف ----------
                 st.markdown(
-                    '<div class="step-title"><span class="step-badge">2</span>نتيجة التقرير</div>',
+                    '<div class="step-title">📌 نتيجة التقرير</div>',
                     unsafe_allow_html=True,
                 )
                 title = month_year_title(emp)
@@ -4117,131 +4110,18 @@ with att_root_tab:
                             lv["نوع الإجازة"] = lv["leave_type"].apply(safe_str) if "leave_type" in lv.columns else ""
                             st.dataframe(lv[["اليوم", "التاريخ", "نوع الإجازة"]], use_container_width=True, hide_index=True)
 
-                    # تسجيل سريع لعذر يوم غياب غير مسجّل — من نفس الشاشة
-                    if not abs_emp.empty:
-                        pending = abs_emp[abs_emp["absence_type"] == "غياب بدون إذن (غير مسجل)"]
-                        if not pending.empty:
-                            with st.expander(f"📝 تسجيل نوع الغياب للأيام غير المسجلة ({len(pending)} يوم)"):
-                                with st.form("quick_absence_form", clear_on_submit=True):
-                                    day_opts = {fmt_date(x): x for x in pending["date"]}
-                                    q_days = st.multiselect("الأيام", list(day_opts.keys()))
-                                    q1, q2 = st.columns(2)
-                                    with q1:
-                                        q_type = st.selectbox("نوع الغياب", ["غياب بإذن", "غياب بدون إذن"])
-                                    with q2:
-                                        q_reason = st.text_input("السبب / الملاحظة")
-                                    q_submit = st.form_submit_button("💾 حفظ", use_container_width=True)
-                                if q_submit:
-                                    if not q_days:
-                                        st.error("اختر يومًا واحدًا على الأقل")
-                                    else:
-                                        for lbl in q_days:
-                                            dd = pd.Timestamp(day_opts[lbl])
-                                            add_absence_record({
-                                                "record_id": f"AB-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
-                                                "employee_id": emp_personnel_id,
-                                                "employee_no": emp_no,
-                                                "name_ar": name_ar,
-                                                "department": dept,
-                                                "record_type": q_type,
-                                                "start_date": dd,
-                                                "end_date": dd,
-                                                "reason": q_reason,
-                                                "attachment_name": "",
-                                                "attachment_path": "",
-                                                "created_at": pd.Timestamp.now(),
-                                                "created_by": st.session_state.get("login_user"),
-                                            })
-                                        st.rerun()
+                    if not abs_emp.empty and (abs_emp["absence_type"] == "غياب بدون إذن (غير مسجل)").any():
+                        st.caption("ℹ️ لتحديد نوع أيام الغياب غير المسجلة، سجّلها في ورقة (الغياب والتأخير) في Google Sheet ثم اضغط زر الحفظ هناك.")
 
     # -----------------------------------------------------
-    # 2) تسجيل غياب / تأخير
-    # -----------------------------------------------------
-    with abs_register_tab:
-        st.markdown('<div class="card"><div class="card-title">📝 تسجيل غياب أو تأخير</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="edit-hint">سجّل هنا الغياب (بإذن أو بدون إذن) أو التأخير/الخروج المبكر بعذر. '
-            'التسجيل بيظهر تلقائيًا في تقرير البصمة وملف PDF للموظف عند رفع ملف البصمة للفترة نفسها.</div>',
-            unsafe_allow_html=True,
-        )
-
-        if employee_lookup.empty:
-            st.warning("ملف الموظفين غير متوفر، لذلك لا يمكن التسجيل.")
-        else:
-            abs_options = build_employee_options()
-            with st.form("absence_form", clear_on_submit=True):
-                f1, f2 = st.columns([2, 1])
-                with f1:
-                    ab_emp_label = st.selectbox(
-                        "الموظف",
-                        options=list(abs_options.keys()),
-                        index=None,
-                        placeholder="ابحث باسم الموظف...",
-                    )
-                with f2:
-                    ab_type = st.selectbox("نوع التسجيل", ABSENCE_TYPES)
-
-                f3, f4 = st.columns(2)
-                with f3:
-                    ab_from = st.date_input("من تاريخ", key="abs_from_date")
-                with f4:
-                    ab_to = st.date_input("إلى تاريخ", key="abs_to_date")
-
-                ab_reason = st.text_area(
-                    "السبب / التفاصيل",
-                    placeholder="مثال: مراجعة مستشفى، ظرف عائلي، زحمة طريق...",
-                )
-                ab_file = st.file_uploader(
-                    "إرفاق مستند (اختياري)",
-                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx"],
-                    key="abs_attachment_upload",
-                )
-                ab_submit = st.form_submit_button("💾 حفظ التسجيل", use_container_width=True)
-
-            if ab_submit:
-                if not ab_emp_label:
-                    st.error("اختر الموظف أولاً")
-                elif ab_to < ab_from:
-                    st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
-                elif ab_type == "أخرى" and not ab_reason.strip():
-                    st.error("اكتب السبب عند اختيار النوع (أخرى)")
-                else:
-                    emp_rec = find_employee_record(employees_df, abs_options[ab_emp_label])
-                    if not emp_rec:
-                        st.error("تعذر العثور على بيانات الموظف")
-                    else:
-                        att_name, att_path = save_absence_attachment(
-                            ab_file, safe_str(emp_rec.get("employee_id")), ab_from
-                        )
-                        add_absence_record({
-                            "record_id": f"AB-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
-                            "employee_id": safe_str(emp_rec.get("employee_id")),
-                            "employee_no": fmt_id(emp_rec.get("employee_no")),
-                            "name_ar": safe_str(emp_rec.get("name_ar")),
-                            "department": safe_str(emp_rec.get("department")),
-                            "record_type": ab_type,
-                            "start_date": pd.Timestamp(ab_from),
-                            "end_date": pd.Timestamp(ab_to),
-                            "reason": ab_reason,
-                            "attachment_name": att_name,
-                            "attachment_path": att_path,
-                            "created_at": pd.Timestamp.now(),
-                            "created_by": st.session_state.get("login_user"),
-                        })
-                        days_n = leave_days_count(ab_from, ab_to)
-                        st.success(f"✅ تم حفظ ({ab_type}) لـ {safe_str(emp_rec.get('name_ar'))} — {days_n} يوم")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # -----------------------------------------------------
-    # 3) سجل الغياب والأعذار
+    # 2) سجل الغياب والأعذار (يُقرأ من Google Sheet)
     # -----------------------------------------------------
     with abs_log_tab:
         st.markdown('<div class="card"><div class="card-title">📋 سجل الغياب والأعذار</div>', unsafe_allow_html=True)
 
         log_df = load_absence_records()
         if log_df.empty:
-            st.info("لا توجد تسجيلات بعد. استخدم تبويب (تسجيل غياب / تأخير) لإضافة أول تسجيل.")
+            st.info("لا توجد تسجيلات بعد. سجّل الغياب والتأخير من ورقة (الغياب والتأخير) في Google Sheet ثم اضغط زر الحفظ هناك.")
         else:
             lg1, lg2, lg3, lg4 = st.columns([2, 2, 1, 1])
             with lg1:
@@ -4306,20 +4186,6 @@ with att_root_tab:
                     use_container_width=True,
                     key="abs_log_xlsx_btn",
                 )
-
-                with st.expander("🗑️ حذف تسجيل"):
-                    del_opts = {
-                        f"{safe_str(r['name_ar'])} | {safe_str(r['record_type'])} | "
-                        f"{fmt_date(r['start_date'])} → {fmt_date(r['end_date'])} | {r['record_id']}": r["record_id"]
-                        for _, r in res.iterrows()
-                    }
-                    del_label = st.selectbox("اختر التسجيل", list(del_opts.keys()), index=None, key="abs_del_select")
-                    if st.button("🗑️ حذف التسجيل المحدد", use_container_width=True, key="abs_del_btn", disabled=not del_label):
-                        all_rec = load_absence_records()
-                        all_rec = all_rec[all_rec["record_id"] != del_opts[del_label]]
-                        save_absence_records(all_rec)
-                        st.success("تم الحذف")
-                        st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
