@@ -190,7 +190,8 @@ def _to_df(rows: list[dict], cols: list) -> pd.DataFrame:
             df[c] = None
     df = df[cols].copy()
     for c in DATE_COLS:
-        df[c] = pd.to_datetime(df[c], errors="coerce").dt.normalize()
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c], errors="coerce").dt.normalize()
     if "created_at" in df.columns:
         df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert("Asia/Riyadh").dt.tz_localize(None)
     for c in df.columns:
@@ -370,3 +371,40 @@ def import_from_excel(xls_file) -> dict:
 
     clear_cache()
     return result
+
+
+# -------------------------------------------------
+# عمليات مباشرة (سريعة) — إضافة / تعديل / حذف سجلات بعينها بدون قراءة الجدول كله
+# -------------------------------------------------
+def fetch_keys(table: str, key: str) -> list[str]:
+    keys, start = [], 0
+    while True:
+        res = _client().table(table).select(key).range(start, start + PAGE - 1).execute()
+        batch = res.data or []
+        keys.extend(r[key] for r in batch)
+        if len(batch) < PAGE:
+            return keys
+        start += PAGE
+
+
+def db_row(rec: dict, cols: list, only: list | None = None) -> dict:
+    """يحوّل سجل من البرنامج لصيغة قاعدة البيانات (تواريخ ISO، أرقام نصية نظيفة...)."""
+    row = _row_for_db(rec, cols)
+    if only is not None:
+        row = {k: v for k, v in row.items() if k in only}
+    return row
+
+
+def insert_rows(table: str, rows: list[dict]):
+    for i in range(0, len(rows), 500):
+        _client().table(table).insert(rows[i:i + 500]).execute()
+
+
+def update_row(table: str, key: str, key_value: str, fields: dict):
+    if fields:
+        _client().table(table).update(fields).eq(key, key_value).execute()
+
+
+def delete_keys(table: str, key: str, keys: list[str]):
+    for i in range(0, len(keys), 200):
+        _client().table(table).delete().in_(key, keys[i:i + 200]).execute()
