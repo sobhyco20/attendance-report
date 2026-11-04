@@ -578,6 +578,102 @@ div[data-baseweb="tooltip"] {
     color: #e5e7eb !important;
 }
 
+/* =========================================
+   عناصر كانت مستخدمة في الكود بدون تنسيق
+   (soft-card / section-head / net-pill / edit-hint ...)
+========================================= */
+.soft-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    direction: rtl;
+    text-align: right;
+}
+.soft-title {
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 8px;
+}
+.section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    direction: rtl;
+    margin-bottom: 8px;
+}
+.section-head .ttl { font-weight: 700; color: #f1f5f9; }
+.section-head .sub { font-size: 12px; color: #94a3b8; }
+
+.net-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+.net-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.net-pill {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #e5e7eb;
+}
+.net-pill span { color: #94a3b8; font-size: 11px; margin-right: 6px; }
+
+.edit-hint {
+    background: #0f172a;
+    border-right: 3px solid #3b82f6;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    color: #cbd5e1;
+    font-size: 13px;
+    direction: rtl;
+}
+
+/* شريط خطوات أعلى تبويب البصمة */
+.step-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin: 4px 0 10px 0;
+    direction: rtl;
+}
+.step-badge {
+    display: inline-block;
+    background: #3b82f6;
+    color: #fff;
+    border-radius: 999px;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    font-size: 13px;
+    margin-left: 8px;
+}
+
+/* بطاقة المستخدم في الشريط الجانبي */
+.user-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    direction: rtl;
+}
+.user-card .u-name { font-weight: 700; color: #f1f5f9; font-size: 15px; }
+.user-card .u-sub { color: #94a3b8; font-size: 12px; }
+
+/* شارات نوع الغياب */
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.tag-ok { background: #14532d; color: #bbf7d0; }
+.tag-bad { background: #7f1d1d; color: #fecaca; }
+.tag-mid { background: #713f12; color: #fef08a; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -727,6 +823,29 @@ LEAVES_PATH = os.path.join("data", "leaves.xlsx")
 LEAVE_ATTACHMENTS_DIR = os.path.join("data", "leave_attachments")
 os.makedirs(os.path.dirname(LEAVES_PATH), exist_ok=True)
 os.makedirs(LEAVE_ATTACHMENTS_DIR, exist_ok=True)
+
+# سجل الغياب والتأخير والأعذار (منفصل عن الإجازات)
+ABSENCES_PATH = os.path.join("data", "absences.xlsx")
+ABSENCE_ATTACHMENTS_DIR = os.path.join("data", "absence_attachments")
+os.makedirs(ABSENCE_ATTACHMENTS_DIR, exist_ok=True)
+
+# أنواع التسجيل المتاحة في تبويب "تسجيل غياب / تأخير"
+ABSENCE_TYPES = [
+    "غياب بإذن",
+    "غياب بدون إذن",
+    "تأخير بعذر",
+    "خروج مبكر بإذن",
+    "أخرى",
+]
+# الأنواع اللي بتخص أيام الغياب، والأنواع اللي بتخص التأخير/الخروج المبكر
+ABSENCE_DAY_TYPES = {"غياب بإذن", "غياب بدون إذن"}
+LATE_TYPES = {"تأخير بعذر", "خروج مبكر بإذن"}
+
+ABSENCE_COLUMNS = [
+    "record_id", "employee_id", "employee_no", "name_ar", "department",
+    "record_type", "start_date", "end_date", "reason",
+    "attachment_name", "attachment_path", "created_at", "created_by",
+]
 
 
 
@@ -1013,6 +1132,135 @@ def save_leaves(df: pd.DataFrame):
         if c in out.columns:
             out[c] = pd.to_datetime(out[c], errors="coerce").dt.date
     out.to_excel(LEAVES_PATH, index=False)
+
+
+# =========================
+# سجل الغياب والتأخير والأعذار
+# =========================
+def load_absence_records() -> pd.DataFrame:
+    if not os.path.exists(ABSENCES_PATH):
+        pd.DataFrame(columns=ABSENCE_COLUMNS).to_excel(ABSENCES_PATH, index=False)
+    try:
+        df = pd.read_excel(ABSENCES_PATH)
+    except Exception:
+        return pd.DataFrame(columns=ABSENCE_COLUMNS)
+    if df is None or df.empty:
+        return pd.DataFrame(columns=ABSENCE_COLUMNS)
+    for c in ABSENCE_COLUMNS:
+        if c not in df.columns:
+            df[c] = ""
+        if c not in ("start_date", "end_date"):
+            df[c] = df[c].astype("object")
+    for c in ["employee_id", "employee_no"]:
+        df[c] = df[c].apply(fmt_id)
+    for c in ["start_date", "end_date"]:
+        df[c] = pd.to_datetime(df[c], errors="coerce").dt.normalize()
+    df["record_id"] = df["record_id"].apply(safe_str)
+    return df
+
+
+def save_absence_records(df: pd.DataFrame):
+    out = df.copy()
+    for c in ["start_date", "end_date"]:
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce").dt.date
+    out.to_excel(ABSENCES_PATH, index=False)
+
+
+def add_absence_record(record: dict):
+    df = load_absence_records()
+    df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
+    save_absence_records(df)
+
+
+def save_absence_attachment(uploaded_file, employee_id: str, start_date) -> tuple[str, str]:
+    if uploaded_file is None:
+        return "", ""
+    ext = os.path.splitext(uploaded_file.name)[1] or ".bin"
+    fname = (
+        f"abs_{sanitize_filename(employee_id)}_"
+        f"{pd.to_datetime(start_date).strftime('%Y%m%d')}_"
+        f"{pd.Timestamp.now().strftime('%H%M%S')}{ext}"
+    )
+    path = os.path.join(ABSENCE_ATTACHMENTS_DIR, fname)
+    with open(path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return uploaded_file.name, path
+
+
+def absence_records_for_employee(records: pd.DataFrame, emp_key: str, date_from=None, date_to=None) -> pd.DataFrame:
+    """سجلات الغياب/التأخير الخاصة بموظف واحد ضمن فترة (لو محددة)."""
+    if records is None or records.empty or not emp_key:
+        return pd.DataFrame(columns=ABSENCE_COLUMNS)
+    key = str(emp_key).strip()
+    x = records[
+        (records["employee_id"].astype(str).str.strip() == key) |
+        (records["employee_no"].astype(str).str.strip() == key)
+    ].copy()
+    if date_from is not None:
+        x = x[x["end_date"] >= pd.to_datetime(date_from).normalize()]
+    if date_to is not None:
+        x = x[x["start_date"] <= pd.to_datetime(date_to).normalize()]
+    return x.sort_values("start_date")
+
+
+def _find_record_for_date(emp_records: pd.DataFrame, d, allowed_types: set):
+    """يرجّع أول سجل مسجّل يغطي التاريخ d ونوعه ضمن allowed_types."""
+    if emp_records is None or emp_records.empty or d is None:
+        return None
+    dd = pd.to_datetime(d, errors="coerce")
+    if pd.isna(dd):
+        return None
+    dd = dd.normalize()
+    hit = emp_records[
+        (emp_records["start_date"] <= dd) &
+        (emp_records["end_date"] >= dd) &
+        (emp_records["record_type"].apply(safe_str).isin(allowed_types))
+    ]
+    if hit.empty:
+        return None
+    return hit.iloc[-1]
+
+
+def annotate_absence_days(abs_emp: pd.DataFrame, emp_records: pd.DataFrame) -> pd.DataFrame:
+    """
+    يضيف لكل يوم غياب نوعه (بإذن / بدون إذن) والسبب.
+    أي يوم غياب مالوش تسجيل يعتبر "غياب بدون إذن (غير مسجل)".
+    """
+    if abs_emp is None or abs_emp.empty:
+        return abs_emp
+    out = abs_emp.copy()
+    types, reasons = [], []
+    for _, r in out.iterrows():
+        rec = _find_record_for_date(emp_records, r.get("date"), ABSENCE_DAY_TYPES)
+        if rec is None:
+            types.append("غياب بدون إذن (غير مسجل)")
+            reasons.append("")
+        else:
+            types.append(safe_str(rec.get("record_type")))
+            reasons.append(safe_str(rec.get("reason")))
+    out["absence_type"] = types
+    out["absence_reason"] = reasons
+    return out
+
+
+def annotate_late_days(late_emp: pd.DataFrame, emp_records: pd.DataFrame) -> pd.DataFrame:
+    """يضيف سبب التأخير/الخروج المبكر لو فيه عذر مسجّل لنفس اليوم."""
+    if late_emp is None or late_emp.empty:
+        return late_emp
+    out = late_emp.copy()
+    reasons = []
+    for _, r in out.iterrows():
+        rec = _find_record_for_date(emp_records, r.get("date"), LATE_TYPES | {"أخرى"})
+        if rec is None:
+            reasons.append("")
+        else:
+            txt_ = safe_str(rec.get("record_type"))
+            if safe_str(rec.get("reason")):
+                txt_ += f" — {safe_str(rec.get('reason'))}"
+            reasons.append(txt_)
+    out["excuse"] = reasons
+    return out
 
 
 def get_employee_lookup(employees_df: pd.DataFrame | None) -> pd.DataFrame:
@@ -1352,7 +1600,7 @@ def pdf_page_decorator(font_name: str = "Helvetica", lang: str = "ar"):
     return _decorate
 
 
-def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp: pd.DataFrame | None = None, lang: str = "ar") -> bytes:
+def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp: pd.DataFrame | None = None, lang: str = "ar", excuses_df: pd.DataFrame | None = None) -> bytes:
     FONT_EN = "Helvetica"
     FONT_AR_NAME = "AR"
 
@@ -1654,17 +1902,22 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
         if "date" in ae.columns:
             ae["date"] = ae["date"].apply(fmt_date)
 
-        rows2 = [rtl_row([
-            txt(t("اليوم", "Day", lang)),
-            txt(t("التاريخ", "Date", lang)),
-        ])]
+        has_type = "absence_type" in ae.columns
+
+        header2 = [txt(t("اليوم", "Day", lang)), txt(t("التاريخ", "Date", lang))]
+        if has_type:
+            header2 += [txt(t("نوع الغياب", "Absence Type", lang)), txt(t("السبب", "Reason", lang))]
+        rows2 = [rtl_row(header2)]
 
         for _, r in ae.iterrows():
             day_val = safe_str(r.get("weekday_ar", r.get("weekday", ""))) if lang == "ar" else safe_str(r.get("weekday", ""))
             row = [txt(day_val), txt(safe_str(r.get("date", "")))]
+            if has_type:
+                row += [mixed_txt(r.get("absence_type")), mixed_txt(safe_str(r.get("absence_reason")) or "—")]
             rows2.append(rtl_row(row))
 
-        t2 = Table(rows2, colWidths=rtl_cols([6.0 * cm, 9.5 * cm]))
+        abs_widths = [3.0 * cm, 3.2 * cm, 4.8 * cm, 7.5 * cm] if has_type else [6.0 * cm, 9.5 * cm]
+        t2 = Table(rows2, colWidths=rtl_cols(abs_widths))
         t2.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), font_main),
             ("FONTSIZE", (0, 0), (-1, 0), 11),
@@ -1682,6 +1935,47 @@ def build_pdf(emp_row, late_emp: pd.DataFrame, abs_emp: pd.DataFrame, leave_emp:
 
         absent_days = int(emp_row.get("absent_days", 0) or 0)
         story.append(Paragraph(txt(t(f"🚫 عدد أيام الغياب: {absent_days}", f"🚫 Total Absent Days: {absent_days}", lang)), total_style))
+        if has_type:
+            excused_n = int((ae["absence_type"] == "غياب بإذن").sum())
+            unexcused_n = len(ae) - excused_n
+            story.append(Paragraph(txt(t(
+                f"منها بإذن: {excused_n}  |  بدون إذن: {unexcused_n}",
+                f"Excused: {excused_n}  |  Unexcused: {unexcused_n}",
+                lang,
+            )), total_style))
+
+    # الأعذار المسجلة للتأخير / الخروج المبكر / أخرى
+    if excuses_df is not None and not excuses_df.empty:
+        ex = excuses_df[excuses_df["record_type"].apply(safe_str).isin(LATE_TYPES | {"أخرى"})].copy()
+        if not ex.empty:
+            story.append(Spacer(1, 12))
+            story.append(Paragraph(txt(t("أعذار التأخير والخروج المبكر", "Late / Early Leave Excuses", lang)), h_style))
+            rows_ex = [rtl_row([
+                txt(t("من", "From", lang)),
+                txt(t("إلى", "To", lang)),
+                txt(t("النوع", "Type", lang)),
+                txt(t("السبب", "Reason", lang)),
+            ])]
+            for _, r in ex.iterrows():
+                rows_ex.append(rtl_row([
+                    txt(fmt_date(r.get("start_date"))),
+                    txt(fmt_date(r.get("end_date"))),
+                    mixed_txt(r.get("record_type")),
+                    mixed_txt(safe_str(r.get("reason")) or "—"),
+                ]))
+            t_ex = Table(rows_ex, colWidths=rtl_cols([3.0 * cm, 3.0 * cm, 4.0 * cm, 8.5 * cm]))
+            t_ex.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, -1), font_main),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BACKGROUND", (0, 0), (-1, 0), PDF_NAVY_HEADER),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT" if lang == "ar" else "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(t_ex)
 
     story.append(Spacer(1, 12))
     story.append(Paragraph(txt(t("الإجازات المعتمدة", "Approved Leaves", lang)), h_style))
@@ -1782,15 +2076,6 @@ if "edit_lookup_leave_id" not in st.session_state:
 
 
 
-with st.sidebar:
-    st.header("⚙️ الإعدادات")
-    st.markdown("### 👤 المستخدم")
-    st.success(f"✅ {st.session_state.get('login_user','')}")
-    st.caption("يمكنك الآن إدارة الإجازات واستخراج تقريرها بدون الحاجة لرفع ملف بصمة.")
-
-
-
-main_tab, leave_root_tab, emp_report_tab = st.tabs(["📊 تقرير البصمة", "🏖️ إدارة الإجازات", "📄 تقرير الموظف"])
 
 def build_leaves_pdf(leaves_df: pd.DataFrame) -> bytes:
 
@@ -2752,6 +3037,68 @@ def show_attachment_dialog_if_needed():
 
 
 
+# =========================================================
+# الشريط الجانبي — ثابت في كل الشاشات (المستخدم + دليل + خروج)
+# ملف البصمة لم يعد يُرفع من هنا؛ مكانه الآن داخل تبويب "البصمة والحضور".
+# =========================================================
+with st.sidebar:
+    st.markdown(
+        f"""
+        <div class="user-card">
+            <div style="font-size:30px">👤</div>
+            <div class="u-name">{st.session_state.get('login_user', '')}</div>
+            <div class="u-sub">مسجّل الدخول</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### 🧭 دليل الاستخدام")
+    st.caption("📊 **البصمة والحضور:** ارفع ملف البصمة، سجّل الغياب والأعذار، وراجع السجل.")
+    st.caption("🏖️ **الإجازات:** تسجيل وعرض وتعديل الإجازات وتقارير المرضية.")
+    st.caption("📄 **تقرير الموظف:** تقرير إجازات موظف واحد لفترة محددة.")
+
+    st.markdown(
+        """
+        <div class="footer-hint">
+        🕋 رمضان: 09:30 → 15:30<br>
+        🚪 الخروج المبكر: 17:00 (عادي) / 15:30 (رمضان)<br>
+        🎉 إجازة العيد لا تُحسب غياب أو تأخير
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if os.path.exists(SIDE_IMAGE_PATH):
+        st.image(SIDE_IMAGE_PATH, use_container_width=True)
+
+    st.divider()
+    if st.button("🚪 تسجيل خروج", use_container_width=True, key="logout_btn"):
+        if not st.session_state.get("cookies_unavailable", False):
+            cookies["logged_in"] = "false"
+            cookies["login_user"] = ""
+            cookies.save()
+        st.session_state["logged_in"] = False
+        st.session_state["login_user"] = ""
+        st.rerun()
+
+
+def build_employee_options() -> dict:
+    """قائمة الموظفين للاختيار: (الاسم — الرقم) → المعرف."""
+    return {
+        employee_option_label(r): (r.get("employee_id") or r.get("employee_no"))
+        for _, r in employee_lookup.iterrows()
+    }
+
+
+# =========================================================
+# التبويبات الرئيسية
+# =========================================================
+att_root_tab, leave_root_tab, emp_report_tab = st.tabs(
+    ["📊 البصمة والحضور", "🏖️ الإجازات", "📄 تقرير الموظف"]
+)
+
+
 with leave_root_tab:
     register_tab, view_tab, sick_tab, all_summary_tab, edit_tab = st.tabs(
         ["➕ تسجيل إجازة", "📊 عرض الإجازات", "🤒 الإجازات المرضية", "📋 ملخص الإجازات", "✏️ تعديل الإجازات"]
@@ -3495,283 +3842,487 @@ with leave_root_tab:
     show_attachment_dialog_if_needed()
 
 
-with main_tab:
-    with st.sidebar:
-        uploaded_file = st.file_uploader("📄 ارفع ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file")
-        start_time = st.time_input("🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time")
-        grace = st.number_input("⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace")
-        st.caption("ℹ️ يتم استخراج التقرير تلقائيًا بمجرد رفع الملف.")
+# =========================================================
+# تبويب البصمة والحضور
+#   1) تقرير البصمة  (رفع الملف + الإعدادات + التقرير في مكان واحد)
+#   2) تسجيل غياب / تأخير  (غياب بإذن / بدون إذن / تأخير بعذر / ...)
+#   3) سجل الغياب والأعذار  (عرض + حذف + تصدير Excel)
+# =========================================================
+with att_root_tab:
+    att_report_tab, abs_register_tab, abs_log_tab = st.tabs(
+        ["📈 تقرير البصمة", "📝 تسجيل غياب / تأخير", "📋 سجل الغياب والأعذار"]
+    )
 
-
-
-    if not uploaded_file:
+    # -----------------------------------------------------
+    # 1) تقرير البصمة
+    # -----------------------------------------------------
+    with att_report_tab:
         st.markdown(
-            """
-            <div class="hero-card">
-              <div class="hero-title">📊 لوحة تقرير البصمة</div>
-              <div class="hero-sub">ارفع ملف البصمة من الشريط الجانبي لعرض التقرير الكامل مع التأخير والغياب والخروج المبكر والإجازات المعتمدة.</div>
-            </div>
-            """,
+            '<div class="step-title"><span class="step-badge">1</span>رفع ملف البصمة وإعدادات الدوام</div>',
             unsafe_allow_html=True,
         )
+        u1, u2, u3 = st.columns([2, 1, 1])
+        with u1:
+            uploaded_file = st.file_uploader(
+                "📄 ملف البصمة (Excel)", type=["xlsx", "xls"], key="att_file"
+            )
+        with u2:
+            start_time = st.time_input(
+                "🕗 وقت بداية الدوام", value=pd.to_datetime("08:00").time(), key="start_time"
+            )
+        with u3:
+            grace = st.number_input(
+                "⏱ دقائق السماح", min_value=0, max_value=120, value=15, key="grace"
+            )
 
-        a1, a2, a3 = st.columns(3)
-        a1.markdown('<div class="grid-note">⏱ احتساب التأخير يتم تلقائيًا حسب وقت البداية + السماح.</div>', unsafe_allow_html=True)
-        a2.markdown('<div class="grid-note">🏖️ الإجازات المعتمدة يتم استبعادها من الغياب تلقائيًا.</div>', unsafe_allow_html=True)
-        a3.markdown('<div class="grid-note">📄 يمكنك تصدير تقرير الموظف PDF عربي وإنجليزي بعد رفع الملف.</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="grid-note">{eid_al_adha_hint()}</div>', unsafe_allow_html=True)
-    else:
-        summary, late, absence, exempt_report, approved_leave_days = process_attendance(
-            uploaded_file,
-            start_time=start_time.strftime("%H:%M"),
-            grace_minutes=int(grace),
-            schedule_mode="by_nationality",
-            employees_df=employees_df,
-            daily_required_hours=9.0,
-            approved_leaves_df=leaves_df,
-        )
-        summary, absence = exclude_eid_al_adha_absence(summary, absence)
-
-        if summary is None or summary.empty:
-            st.error("لا توجد بيانات بعد المعالجة.")
-        elif len(summary) != 1:
-            st.warning("الملف يحتوي أكثر من موظف — هذا العرض مصمم لموظف واحد حاليًا.")
-            st.dataframe(summary, use_container_width=True, hide_index=True)
-        else:
-            emp = summary.iloc[0]
-            emp_personnel_id = safe_str(emp.get("employee_id", ""))
-            emp_no = fmt_id(emp.get("employee_no", ""))
-            name_ar = safe_str(emp.get("name_ar", ""))
-            name_en = safe_str(emp.get("name_en", ""))
-            nat = safe_str(emp.get("nationality", emp.get("nationality_raw", "")))
-            dept = safe_str(emp.get("department", ""))
-            job = safe_str(emp.get("job_title", ""))
-
-            late_emp = late[late["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if late is not None and not late.empty else pd.DataFrame()
-            abs_emp = absence[absence["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if absence is not None and not absence.empty else pd.DataFrame()
-            leave_emp = approved_leave_days[approved_leave_days["employee_id"].astype(str).str.strip() == emp_personnel_id].copy() if approved_leave_days is not None and not approved_leave_days.empty else pd.DataFrame()
-
-            if not late_emp.empty and "weekday" in late_emp.columns:
-                late_emp["weekday_ar"] = late_emp["weekday"].apply(weekday_to_ar)
-            if not abs_emp.empty and "weekday" in abs_emp.columns:
-                abs_emp["weekday_ar"] = abs_emp["weekday"].apply(weekday_to_ar)
-            if not leave_emp.empty and "weekday" in leave_emp.columns:
-                leave_emp["weekday_ar"] = leave_emp["weekday"].apply(weekday_to_ar)
-
-            pdf_ar = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="ar")
-            pdf_en = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="en")
-
-            st.session_state["pdf_bytes_ar"] = pdf_ar
-            st.session_state["pdf_bytes_en"] = pdf_en
-            base_name = sanitize_filename(name_ar or name_en)
-            base_no = sanitize_filename(emp_no)
-            st.session_state["pdf_filename_ar"] = f"{base_name}_{base_no}_AR.pdf"
-            st.session_state["pdf_filename_en"] = f"{base_name}_{base_no}_EN.pdf"
-
-            title = month_year_title(emp)
-            schedule = safe_str(emp.get("schedule", ""))
-            sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
-            fri_note = "🛑 إجازة الجمعة"
-
+        if not uploaded_file:
             st.markdown(
-                f"""
+                """
                 <div class="hero-card">
-                <div class="hero-title">{title}</div>
-                <div class="hero-sub">{fri_note} • {sat_note}</div>
-                <div class="hero-sub">{eid_al_adha_hint()}</div>
-                <div style="font-size:28px;font-weight:1000;margin-top:10px">👤 {name_ar}</div>
-                <div class="hero-sub">{name_en}</div>
-                <div class="hero-sub" style="margin-top:4px">{nat} • {job} • {dept}</div>
-                <div style="margin-top:10px;font-weight:900">الكود / الرقم الوظيفي: {emp_no}</div>
+                  <div class="hero-title">📊 لوحة تقرير البصمة</div>
+                  <div class="hero-sub">ارفع ملف البصمة من الأعلى لعرض التقرير الكامل: التأخير، الخروج المبكر، الغياب (بإذن / بدون إذن)، والإجازات المعتمدة.</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-
-            k1, k2, k3, k4, k5 = st.columns(5)
-            k1.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("total_late_minutes",0) or 0)}</div><div class="t">إجمالي دقائق التأخير</div></div>', unsafe_allow_html=True)
-            k2.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("total_early_leave_minutes",0) or 0)}</div><div class="t">إجمالي دقائق الخروج المبكر</div></div>', unsafe_allow_html=True)
-            k3.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("late_days",0) or 0)}</div><div class="t">عدد أيام التأخير</div></div>', unsafe_allow_html=True)
-            k4.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("absent_days",0) or 0)}</div><div class="t">عدد أيام الغياب</div></div>', unsafe_allow_html=True)
-            k5.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("approved_leave_days",0) or 0)}</div><div class="t">أيام الإجازات المعتمدة</div></div>', unsafe_allow_html=True)
-
-            k6, k7 = st.columns(2)
-            k6.markdown(f'<div class="small-kpi"><div class="n">{int(emp.get("early_leave_days",0) or 0)}</div><div class="t">عدد أيام الخروج المبكر</div></div>', unsafe_allow_html=True)
-            k7.markdown(f'<div class="small-kpi"><div class="n">{int((emp.get("total_late_minutes",0) or 0) + (emp.get("total_early_leave_minutes",0) or 0))}</div><div class="t">إجمالي دقائق التأخيرات الزمنية</div></div>', unsafe_allow_html=True)
-
-            attendance_rule = safe_str(emp.get("attendance_calculation", "")).strip().lower()
-            if attendance_rule == "daily_hours":
-                total_late = int(emp.get("total_late_minutes", 0) or 0)
-                total_early_leave = int(emp.get("total_early_leave_minutes", 0) or 0)
-                total_overtime = int(emp.get("total_overtime_minutes", 0) or 0)
-                total_deficit = total_late + total_early_leave
-                net = total_overtime - total_deficit
-                net_label = "صافي إضافي" if net > 0 else ("صافي عجز" if net < 0 else "متعادل")
-                net_class = "net-good" if net > 0 else ("net-bad" if net < 0 else "net-mid")
-                st.markdown(
-                    f"""
-                    <div class="net-box">
-                      <div class="net-title">🧾 نتيجة الاحتساب للمستثنى</div>
-                      <div class="net-big {net_class}">{net_label}: {mm_to_hhmm(net)}</div>
-                      <div class="net-sub">الصافي = إجمالي الإضافي − (إجمالي التأخير + إجمالي الخروج المبكر)</div>
-                      <div class="net-row">
-                        <div class="net-pill">⬇️ إجمالي التأخير: <b>{mm_to_hhmm(total_late)}</b><span>(بعد بداية الدوام + السماح)</span></div>
-                        <div class="net-pill">🚪 إجمالي الخروج المبكر: <b>{mm_to_hhmm(total_early_leave)}</b><span>(قبل نهاية الدوام)</span></div>
-                        <div class="net-pill">⬆️ إجمالي الإضافي: <b>{mm_to_hhmm(total_overtime)}</b><span>(بعد نهاية الدوام)</span></div>
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+            a1, a2, a3 = st.columns(3)
+            a1.markdown('<div class="grid-note">⏱ احتساب التأخير يتم تلقائيًا حسب وقت البداية + السماح.</div>', unsafe_allow_html=True)
+            a2.markdown('<div class="grid-note">📝 الغياب المسجّل "بإذن" يظهر مميّزًا في التقرير وملف PDF.</div>', unsafe_allow_html=True)
+            a3.markdown('<div class="grid-note">🏖️ الإجازات المعتمدة تُستبعد من الغياب تلقائيًا.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="grid-note" style="margin-top:10px">{eid_al_adha_hint()}</div>', unsafe_allow_html=True)
+        else:
+            try:
+                summary, late, absence, exempt_report, approved_leave_days = process_attendance(
+                    uploaded_file,
+                    start_time=start_time.strftime("%H:%M"),
+                    grace_minutes=int(grace),
+                    schedule_mode="by_nationality",
+                    employees_df=employees_df,
+                    daily_required_hours=9.0,
+                    approved_leaves_df=leaves_df,
                 )
+                summary, absence = exclude_eid_al_adha_absence(summary, absence)
+            except Exception as proc_err:
+                st.error(f"❌ تعذّر قراءة ملف البصمة: {proc_err}")
+                summary = None
+
+            if summary is None or summary.empty:
+                st.error("لا توجد بيانات بعد المعالجة.")
+            elif len(summary) != 1:
+                st.warning("الملف يحتوي أكثر من موظف — هذا العرض مصمم لموظف واحد حاليًا.")
+                st.dataframe(summary, use_container_width=True, hide_index=True)
             else:
-                total_late = int(emp.get("total_late_minutes", 0) or 0)
-                total_early_leave = int(emp.get("total_early_leave_minutes", 0) or 0)
-                total_deficit = total_late + total_early_leave
+                emp = summary.iloc[0]
+                emp_personnel_id = safe_str(emp.get("employee_id", ""))
+                emp_no = fmt_id(emp.get("employee_no", ""))
+                name_ar = safe_str(emp.get("name_ar", ""))
+                name_en = safe_str(emp.get("name_en", ""))
+                nat = safe_str(emp.get("nationality", emp.get("nationality_raw", "")))
+                dept = safe_str(emp.get("department", ""))
+                job = safe_str(emp.get("job_title", ""))
+                period_from = emp.get("period_from")
+                period_to = emp.get("period_to")
+
+                def _filter_emp(df_):
+                    if df_ is None or df_.empty:
+                        return pd.DataFrame()
+                    return df_[df_["employee_id"].astype(str).str.strip() == emp_personnel_id].copy()
+
+                late_emp = _filter_emp(late)
+                abs_emp = _filter_emp(absence)
+                leave_emp = _filter_emp(approved_leave_days)
+
+                for _df in (late_emp, abs_emp, leave_emp):
+                    if not _df.empty and "weekday" in _df.columns:
+                        _df["weekday_ar"] = _df["weekday"].apply(weekday_to_ar)
+
+                # ربط الغياب/التأخير بالأعذار المسجلة في تبويب "تسجيل غياب / تأخير"
+                all_abs_records = load_absence_records()
+                emp_records = absence_records_for_employee(
+                    all_abs_records, emp_personnel_id, period_from, period_to
+                )
+                if emp_records.empty and emp_no and emp_no != emp_personnel_id:
+                    emp_records = absence_records_for_employee(
+                        all_abs_records, emp_no, period_from, period_to
+                    )
+                abs_emp = annotate_absence_days(abs_emp, emp_records)
+                late_emp = annotate_late_days(late_emp, emp_records)
+
+                excused_days = int((abs_emp["absence_type"] == "غياب بإذن").sum()) if not abs_emp.empty else 0
+                unexcused_days = (len(abs_emp) - excused_days) if not abs_emp.empty else 0
+
+                pdf_ar = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="ar", excuses_df=emp_records)
+                pdf_en = build_pdf(emp, late_emp, abs_emp, leave_emp, lang="en", excuses_df=emp_records)
+                base_name = sanitize_filename(name_ar or name_en)
+                base_no = sanitize_filename(emp_no)
+
+                # ---------- بطاقة الموظف ----------
                 st.markdown(
-                    f"""
-                    <div class="net-box">
-                      <div class="net-title">🧾 ملخص الاحتساب</div>
-                      <div class="net-big net-bad">إجمالي التأخيرات: {mm_to_hhmm(total_deficit)}</div>
-                      <div class="net-sub">إجمالي التأخيرات = التأخير + الخروج المبكر</div>
-                      <div class="net-row">
-                        <div class="net-pill">⬇️ إجمالي التأخير: <b>{mm_to_hhmm(total_late)}</b><span>(بعد بداية الدوام + السماح)</span></div>
-                        <div class="net-pill">🚪 إجمالي الخروج المبكر: <b>{mm_to_hhmm(total_early_leave)}</b><span>(قبل نهاية الدوام)</span></div>
-                      </div>
-                    </div>
-                    """,
+                    '<div class="step-title"><span class="step-badge">2</span>نتيجة التقرير</div>',
                     unsafe_allow_html=True,
                 )
+                title = month_year_title(emp)
+                schedule = safe_str(emp.get("schedule", ""))
+                sat_note = "✅ دوام السبت" if schedule == "جمعة فقط" else "🛑 إجازة السبت"
 
-            overview_tab, details_tab, status_tab = st.tabs(["📌 الملخص", "🧾 التفاصيل اليومية", "🚫 الغياب والإجازات"])
-
-            with overview_tab:
-                st.markdown('<div class="soft-card"><div class="soft-title">بطاقة الموظف</div>', unsafe_allow_html=True)
-                info1, info2, info3, info4 = st.columns(4)
-                info1.write(f"**الاسم العربي:** {name_ar}")
-                info2.write(f"**الاسم الإنجليزي:** {name_en}")
-                info3.write(f"**الجنسية:** {nat}")
-                info4.write(f"**الإدارة:** {dept}")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-                totals_df = pd.DataFrame([
-                    {"البند": "إجمالي التأخير", "القيمة": mm_to_hhmm(int(emp.get("total_late_minutes", 0) or 0))},
-                    {"البند": "إجمالي الخروج المبكر", "القيمة": mm_to_hhmm(int(emp.get("total_early_leave_minutes", 0) or 0))},
-                    {"البند": "أيام الغياب", "القيمة": int(emp.get("absent_days", 0) or 0)},
-                    {"البند": "أيام الإجازات المعتمدة", "القيمة": int(emp.get("approved_leave_days", 0) or 0)},
-                ])
-                if attendance_rule == "daily_hours":
-                    totals_df = pd.concat([
-                        totals_df,
-                        pd.DataFrame([{"البند": "إجمالي الإضافي", "القيمة": mm_to_hhmm(int(emp.get("total_overtime_minutes", 0) or 0))}])
-                    ], ignore_index=True)
-
-                st.dataframe(totals_df, use_container_width=True, hide_index=True)
-
-            with details_tab:
-                st.markdown('<div class="soft-card"><div class="section-head"><div class="ttl">⏱ التأخير / الخروج المبكر / الإضافي</div><div class="sub">عرض يومي تفصيلي</div></div>', unsafe_allow_html=True)
-
-                if late_emp is None or late_emp.empty:
-                    st.success("لا يوجد سجلات مخالفة ✅")
-                else:
-                    details_df = late_emp.copy()
-                    if "date" in details_df.columns:
-                        details_df["date"] = pd.to_datetime(details_df["date"], errors="coerce")
-                        details_df = details_df.sort_values("date")
-
-                    details_df["التاريخ"] = details_df["date"].apply(fmt_date) if "date" in details_df.columns else ""
-                    details_df["اليوم"] = details_df["weekday_ar"].apply(safe_str) if "weekday_ar" in details_df.columns else ""
-                    details_df["أول بصمة"] = details_df["first_punch_time"].apply(lambda x: pd.to_datetime(str(x), errors="coerce").strftime("%H:%M") if safe_str(x) else "") if "first_punch_time" in details_df.columns else ""
-                    details_df["آخر بصمة"] = details_df["last_punch_time"].apply(lambda x: pd.to_datetime(str(x), errors="coerce").strftime("%H:%M") if safe_str(x) else "") if "last_punch_time" in details_df.columns else ""
-                    details_df["التأخير"] = details_df["late_minutes"].apply(mm_to_hhmm) if "late_minutes" in details_df.columns else ""
-                    details_df["الخروج المبكر"] = details_df["early_leave_minutes"].apply(mm_to_hhmm) if "early_leave_minutes" in details_df.columns else ""
-
-                    show_cols = ["اليوم", "التاريخ", "أول بصمة", "آخر بصمة", "التأخير", "الخروج المبكر"]
-                    if attendance_rule == "daily_hours":
-                        if "worked_minutes" in details_df.columns:
-                            details_df["ساعات العمل"] = details_df["worked_minutes"].apply(mm_to_hhmm)
-                            show_cols.insert(4, "ساعات العمل")
-                        if "overtime_minutes" in details_df.columns:
-                            details_df["الإضافي"] = details_df["overtime_minutes"].apply(mm_to_hhmm)
-                            show_cols.append("الإضافي")
-
-                    st.dataframe(details_df[show_cols], use_container_width=True, hide_index=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            with status_tab:
-                sc1, sc2 = st.columns(2)
-
-                with sc1:
-                    st.markdown('<div class="soft-card"><div class="soft-title">🚫 الغياب</div>', unsafe_allow_html=True)
-                    if abs_emp.empty:
-                        st.success("لا يوجد غياب ✅")
-                    else:
-                        abs_df = abs_emp.copy()
-                        abs_df["التاريخ"] = abs_df["date"].apply(fmt_date) if "date" in abs_df.columns else ""
-                        abs_df["اليوم"] = abs_df["weekday_ar"].apply(safe_str) if "weekday_ar" in abs_df.columns else ""
-                        st.dataframe(abs_df[["اليوم", "التاريخ"]], use_container_width=True, hide_index=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                with sc2:
-                    st.markdown('<div class="soft-card"><div class="soft-title">🏖️ الإجازات المعتمدة</div>', unsafe_allow_html=True)
-                    if leave_emp.empty:
-                        st.success("لا توجد إجازات معتمدة ضمن الفترة ✅")
-                    else:
-                        leave_df = leave_emp.copy()
-                        leave_df["التاريخ"] = leave_df["date"].apply(fmt_date) if "date" in leave_df.columns else ""
-                        leave_df["اليوم"] = leave_df["weekday_ar"].apply(safe_str) if "weekday_ar" in leave_df.columns else ""
-                        leave_df["نوع الإجازة"] = leave_df["leave_type"].apply(safe_str) if "leave_type" in leave_df.columns else ""
-                        leave_df["المرفق"] = leave_df["attachment_name"].apply(lambda x: safe_str(x) if safe_str(x) else "—") if "attachment_name" in leave_df.columns else "—"
-                        st.dataframe(leave_df[["اليوم", "التاريخ", "نوع الإجازة", "المرفق"]], use_container_width=True, hide_index=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-            with st.sidebar:
-                st.divider()
-                st.subheader("⬇️ التصدير")
-                st.markdown('<div class="export-box">', unsafe_allow_html=True)
-
-                if st.session_state.get("pdf_bytes_ar", b""):
+                h1, h2 = st.columns([3, 1])
+                with h1:
+                    st.markdown(
+                        f"""
+                        <div class="hero-card">
+                        <div class="hero-title">{title}</div>
+                        <div class="hero-sub">🛑 إجازة الجمعة • {sat_note} • الفترة: {fmt_date(period_from)} → {fmt_date(period_to)}</div>
+                        <div style="font-size:26px;font-weight:900;margin-top:10px">👤 {name_ar}</div>
+                        <div class="hero-sub">{name_en}</div>
+                        <div class="hero-sub" style="margin-top:4px">{nat} • {job} • {dept}</div>
+                        <div style="margin-top:8px;font-weight:800">الكود / الرقم الوظيفي: {emp_no}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with h2:
+                    st.markdown("**⬇️ تصدير التقرير**")
                     st.download_button(
-                        "📄 تحميل تقرير PDF (عربي)",
-                        data=st.session_state["pdf_bytes_ar"],
-                        file_name=st.session_state.get("pdf_filename_ar", "report_AR.pdf"),
+                        "📄 PDF عربي",
+                        data=pdf_ar,
+                        file_name=f"{base_name}_{base_no}_AR.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                         key="download_pdf_ar",
                     )
-
-                if st.session_state.get("pdf_bytes_en", b""):
                     st.download_button(
-                        "📄 Download PDF (English)",
-                        data=st.session_state["pdf_bytes_en"],
-                        file_name=st.session_state.get("pdf_filename_en", "report_EN.pdf"),
+                        "📄 PDF English",
+                        data=pdf_en,
+                        file_name=f"{base_name}_{base_no}_EN.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                         key="download_pdf_en",
                     )
 
-                st.markdown("""
-                <div class="footer-hint">
-                🕋 رمضان: 09:30 → 15:30<br>
-                🚪 الخروج المبكر: 17:00 (عادي) / 15:30 (رمضان)<br>
-                🎉 إجازة العيد لا تُحسب غياب أو تأخير
-                </div>
-                """, unsafe_allow_html=True)
+                # ---------- المؤشرات ----------
+                def _kpi(col, value, label):
+                    col.markdown(
+                        f'<div class="small-kpi"><div class="n">{value}</div><div class="t">{label}</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
-                st.markdown("</div>", unsafe_allow_html=True)
+                k1, k2, k3, k4 = st.columns(4)
+                _kpi(k1, int(emp.get("late_days", 0) or 0), "أيام التأخير")
+                _kpi(k2, mm_to_hhmm(int(emp.get("total_late_minutes", 0) or 0)), "إجمالي التأخير")
+                _kpi(k3, int(emp.get("early_leave_days", 0) or 0), "أيام الخروج المبكر")
+                _kpi(k4, mm_to_hhmm(int(emp.get("total_early_leave_minutes", 0) or 0)), "إجمالي الخروج المبكر")
 
-                if os.path.exists(SIDE_IMAGE_PATH):
-                    st.image(SIDE_IMAGE_PATH, use_container_width=True)
+                st.write("")
+                k5, k6, k7, k8 = st.columns(4)
+                _kpi(k5, int(emp.get("absent_days", 0) or 0), "إجمالي أيام الغياب")
+                _kpi(k6, excused_days, "✅ غياب بإذن")
+                _kpi(k7, unexcused_days, "🚫 غياب بدون إذن")
+                _kpi(k8, int(emp.get("approved_leave_days", 0) or 0), "🏖️ إجازات معتمدة")
+                st.write("")
 
-                st.divider()
+                attendance_rule = safe_str(emp.get("attendance_calculation", "")).strip().lower()
+                total_late = int(emp.get("total_late_minutes", 0) or 0)
+                total_early_leave = int(emp.get("total_early_leave_minutes", 0) or 0)
+                total_deficit = total_late + total_early_leave
+                if attendance_rule == "daily_hours":
+                    total_overtime = int(emp.get("total_overtime_minutes", 0) or 0)
+                    net = total_overtime - total_deficit
+                    net_label = "صافي إضافي" if net > 0 else ("صافي عجز" if net < 0 else "متعادل")
+                    net_class = "net-good" if net > 0 else ("net-bad" if net < 0 else "net-mid")
+                    st.markdown(
+                        f"""
+                        <div class="net-box">
+                          <div class="net-title">🧾 نتيجة الاحتساب للمستثنى</div>
+                          <div class="net-big {net_class}">{net_label}: {mm_to_hhmm(net)}</div>
+                          <div class="net-sub">الصافي = إجمالي الإضافي − (إجمالي التأخير + إجمالي الخروج المبكر)</div>
+                          <div class="net-row">
+                            <div class="net-pill">⬇️ التأخير: <b>{mm_to_hhmm(total_late)}</b></div>
+                            <div class="net-pill">🚪 الخروج المبكر: <b>{mm_to_hhmm(total_early_leave)}</b></div>
+                            <div class="net-pill">⬆️ الإضافي: <b>{mm_to_hhmm(total_overtime)}</b></div>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="net-box">
+                          <div class="net-title">🧾 ملخص الاحتساب</div>
+                          <div class="net-big net-bad">إجمالي التأخيرات: {mm_to_hhmm(total_deficit)}</div>
+                          <div class="net-sub">إجمالي التأخيرات = التأخير + الخروج المبكر</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                if st.button("🚪 تسجيل خروج", use_container_width=True):
-                    if not st.session_state.get("cookies_unavailable", False):
-                        cookies["logged_in"] = "false"
-                        cookies["login_user"] = ""
-                        cookies.save()
-                    st.session_state["logged_in"] = False
-                    st.session_state["login_user"] = ""
-                    st.rerun()
+                st.write("")
+                details_tab, status_tab = st.tabs(["🧾 التفاصيل اليومية", "🚫 الغياب والإجازات"])
+
+                # ---------- التفاصيل اليومية ----------
+                with details_tab:
+                    if late_emp is None or late_emp.empty:
+                        st.success("لا يوجد سجلات تأخير أو خروج مبكر ✅")
+                    else:
+                        d = late_emp.copy()
+                        d["date"] = pd.to_datetime(d["date"], errors="coerce")
+                        d = d.sort_values("date")
+
+                        def _hm(x):
+                            tt = pd.to_datetime(str(x), errors="coerce") if safe_str(x) else pd.NaT
+                            return "" if pd.isna(tt) else tt.strftime("%H:%M")
+
+                        d["اليوم"] = d.get("weekday_ar", "").apply(safe_str) if "weekday_ar" in d.columns else ""
+                        d["التاريخ"] = d["date"].apply(fmt_date)
+                        d["أول بصمة"] = d["first_punch_time"].apply(_hm) if "first_punch_time" in d.columns else ""
+                        d["آخر بصمة"] = d["last_punch_time"].apply(_hm) if "last_punch_time" in d.columns else ""
+                        d["التأخير"] = d["late_minutes"].apply(mm_to_hhmm)
+                        d["الخروج المبكر"] = d["early_leave_minutes"].apply(mm_to_hhmm)
+                        d["العذر"] = d["excuse"].apply(lambda v: safe_str(v) or "—") if "excuse" in d.columns else "—"
+
+                        show_cols = ["اليوم", "التاريخ", "أول بصمة", "آخر بصمة", "التأخير", "الخروج المبكر"]
+                        if attendance_rule == "daily_hours":
+                            if "worked_minutes" in d.columns:
+                                d["ساعات العمل"] = d["worked_minutes"].apply(mm_to_hhmm)
+                                show_cols.insert(4, "ساعات العمل")
+                            if "overtime_minutes" in d.columns:
+                                d["الإضافي"] = d["overtime_minutes"].apply(mm_to_hhmm)
+                                show_cols.append("الإضافي")
+                        show_cols.append("العذر")
+                        st.dataframe(d[show_cols], use_container_width=True, hide_index=True)
+
+                # ---------- الغياب والإجازات ----------
+                with status_tab:
+                    sc1, sc2 = st.columns(2)
+                    with sc1:
+                        st.markdown("##### 🚫 أيام الغياب")
+                        if abs_emp.empty:
+                            st.success("لا يوجد غياب ✅")
+                        else:
+                            a = abs_emp.copy()
+                            a["اليوم"] = a["weekday_ar"].apply(safe_str) if "weekday_ar" in a.columns else ""
+                            a["التاريخ"] = a["date"].apply(fmt_date)
+                            a["النوع"] = a["absence_type"]
+                            a["السبب"] = a["absence_reason"].apply(lambda v: safe_str(v) or "—")
+                            st.dataframe(a[["اليوم", "التاريخ", "النوع", "السبب"]], use_container_width=True, hide_index=True)
+
+                    with sc2:
+                        st.markdown("##### 🏖️ الإجازات المعتمدة")
+                        if leave_emp.empty:
+                            st.success("لا توجد إجازات معتمدة ضمن الفترة ✅")
+                        else:
+                            lv = leave_emp.copy()
+                            lv["اليوم"] = lv["weekday_ar"].apply(safe_str) if "weekday_ar" in lv.columns else ""
+                            lv["التاريخ"] = lv["date"].apply(fmt_date)
+                            lv["نوع الإجازة"] = lv["leave_type"].apply(safe_str) if "leave_type" in lv.columns else ""
+                            st.dataframe(lv[["اليوم", "التاريخ", "نوع الإجازة"]], use_container_width=True, hide_index=True)
+
+                    # تسجيل سريع لعذر يوم غياب غير مسجّل — من نفس الشاشة
+                    if not abs_emp.empty:
+                        pending = abs_emp[abs_emp["absence_type"] == "غياب بدون إذن (غير مسجل)"]
+                        if not pending.empty:
+                            with st.expander(f"📝 تسجيل نوع الغياب للأيام غير المسجلة ({len(pending)} يوم)"):
+                                with st.form("quick_absence_form", clear_on_submit=True):
+                                    day_opts = {fmt_date(x): x for x in pending["date"]}
+                                    q_days = st.multiselect("الأيام", list(day_opts.keys()))
+                                    q1, q2 = st.columns(2)
+                                    with q1:
+                                        q_type = st.selectbox("نوع الغياب", ["غياب بإذن", "غياب بدون إذن"])
+                                    with q2:
+                                        q_reason = st.text_input("السبب / الملاحظة")
+                                    q_submit = st.form_submit_button("💾 حفظ", use_container_width=True)
+                                if q_submit:
+                                    if not q_days:
+                                        st.error("اختر يومًا واحدًا على الأقل")
+                                    else:
+                                        for lbl in q_days:
+                                            dd = pd.Timestamp(day_opts[lbl])
+                                            add_absence_record({
+                                                "record_id": f"AB-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+                                                "employee_id": emp_personnel_id,
+                                                "employee_no": emp_no,
+                                                "name_ar": name_ar,
+                                                "department": dept,
+                                                "record_type": q_type,
+                                                "start_date": dd,
+                                                "end_date": dd,
+                                                "reason": q_reason,
+                                                "attachment_name": "",
+                                                "attachment_path": "",
+                                                "created_at": pd.Timestamp.now(),
+                                                "created_by": st.session_state.get("login_user"),
+                                            })
+                                        st.rerun()
+
+    # -----------------------------------------------------
+    # 2) تسجيل غياب / تأخير
+    # -----------------------------------------------------
+    with abs_register_tab:
+        st.markdown('<div class="card"><div class="card-title">📝 تسجيل غياب أو تأخير</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="edit-hint">سجّل هنا الغياب (بإذن أو بدون إذن) أو التأخير/الخروج المبكر بعذر. '
+            'التسجيل بيظهر تلقائيًا في تقرير البصمة وملف PDF للموظف عند رفع ملف البصمة للفترة نفسها.</div>',
+            unsafe_allow_html=True,
+        )
+
+        if employee_lookup.empty:
+            st.warning("ملف الموظفين غير متوفر، لذلك لا يمكن التسجيل.")
+        else:
+            abs_options = build_employee_options()
+            with st.form("absence_form", clear_on_submit=True):
+                f1, f2 = st.columns([2, 1])
+                with f1:
+                    ab_emp_label = st.selectbox(
+                        "الموظف",
+                        options=list(abs_options.keys()),
+                        index=None,
+                        placeholder="ابحث باسم الموظف...",
+                    )
+                with f2:
+                    ab_type = st.selectbox("نوع التسجيل", ABSENCE_TYPES)
+
+                f3, f4 = st.columns(2)
+                with f3:
+                    ab_from = st.date_input("من تاريخ", key="abs_from_date")
+                with f4:
+                    ab_to = st.date_input("إلى تاريخ", key="abs_to_date")
+
+                ab_reason = st.text_area(
+                    "السبب / التفاصيل",
+                    placeholder="مثال: مراجعة مستشفى، ظرف عائلي، زحمة طريق...",
+                )
+                ab_file = st.file_uploader(
+                    "إرفاق مستند (اختياري)",
+                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx"],
+                    key="abs_attachment_upload",
+                )
+                ab_submit = st.form_submit_button("💾 حفظ التسجيل", use_container_width=True)
+
+            if ab_submit:
+                if not ab_emp_label:
+                    st.error("اختر الموظف أولاً")
+                elif ab_to < ab_from:
+                    st.error("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية")
+                elif ab_type == "أخرى" and not ab_reason.strip():
+                    st.error("اكتب السبب عند اختيار النوع (أخرى)")
+                else:
+                    emp_rec = find_employee_record(employees_df, abs_options[ab_emp_label])
+                    if not emp_rec:
+                        st.error("تعذر العثور على بيانات الموظف")
+                    else:
+                        att_name, att_path = save_absence_attachment(
+                            ab_file, safe_str(emp_rec.get("employee_id")), ab_from
+                        )
+                        add_absence_record({
+                            "record_id": f"AB-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
+                            "employee_id": safe_str(emp_rec.get("employee_id")),
+                            "employee_no": fmt_id(emp_rec.get("employee_no")),
+                            "name_ar": safe_str(emp_rec.get("name_ar")),
+                            "department": safe_str(emp_rec.get("department")),
+                            "record_type": ab_type,
+                            "start_date": pd.Timestamp(ab_from),
+                            "end_date": pd.Timestamp(ab_to),
+                            "reason": ab_reason,
+                            "attachment_name": att_name,
+                            "attachment_path": att_path,
+                            "created_at": pd.Timestamp.now(),
+                            "created_by": st.session_state.get("login_user"),
+                        })
+                        days_n = leave_days_count(ab_from, ab_to)
+                        st.success(f"✅ تم حفظ ({ab_type}) لـ {safe_str(emp_rec.get('name_ar'))} — {days_n} يوم")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # -----------------------------------------------------
+    # 3) سجل الغياب والأعذار
+    # -----------------------------------------------------
+    with abs_log_tab:
+        st.markdown('<div class="card"><div class="card-title">📋 سجل الغياب والأعذار</div>', unsafe_allow_html=True)
+
+        log_df = load_absence_records()
+        if log_df.empty:
+            st.info("لا توجد تسجيلات بعد. استخدم تبويب (تسجيل غياب / تأخير) لإضافة أول تسجيل.")
+        else:
+            lg1, lg2, lg3, lg4 = st.columns([2, 2, 1, 1])
+            with lg1:
+                log_opts = build_employee_options() if not employee_lookup.empty else {}
+                log_emp = st.selectbox(
+                    "الموظف (اختياري)",
+                    options=list(log_opts.keys()),
+                    index=None,
+                    placeholder="كل الموظفين",
+                    key="abs_log_emp",
+                )
+            with lg2:
+                log_types = st.multiselect("النوع", ABSENCE_TYPES, key="abs_log_types", placeholder="كل الأنواع")
+            with lg3:
+                log_from = st.date_input("من", value=dt.date(dt.date.today().year, 1, 1), key="abs_log_from")
+            with lg4:
+                log_to = st.date_input("إلى", key="abs_log_to")
+
+            res = log_df.copy()
+            if log_emp:
+                key = str(log_opts[log_emp]).strip()
+                res = res[(res["employee_id"].astype(str).str.strip() == key) |
+                          (res["employee_no"].astype(str).str.strip() == key)]
+            if log_types:
+                res = res[res["record_type"].apply(safe_str).isin(log_types)]
+            res = res[(res["end_date"] >= pd.to_datetime(log_from)) & (res["start_date"] <= pd.to_datetime(log_to))]
+            res = res.sort_values("start_date", ascending=False)
+
+            if res.empty:
+                st.info("لا توجد تسجيلات ضمن الشروط المحددة.")
+            else:
+                res = res.copy()
+                res["_days"] = res.apply(lambda r: leave_days_count(r["start_date"], r["end_date"]), axis=1)
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("📄 عدد التسجيلات", len(res))
+                m2.metric("✅ أيام غياب بإذن", int(res.loc[res["record_type"] == "غياب بإذن", "_days"].sum()))
+                m3.metric("🚫 أيام غياب بدون إذن", int(res.loc[res["record_type"] == "غياب بدون إذن", "_days"].sum()))
+                m4.metric("⏱ أعذار تأخير/خروج", int(res["record_type"].isin(LATE_TYPES).sum()))
+
+                view = pd.DataFrame({
+                    "الموظف": res["name_ar"].apply(safe_str),
+                    "الرقم الوظيفي": res["employee_no"].apply(fmt_id),
+                    "القسم": res["department"].apply(safe_str),
+                    "النوع": res["record_type"].apply(safe_str),
+                    "من": res["start_date"].apply(fmt_date),
+                    "إلى": res["end_date"].apply(fmt_date),
+                    "عدد الأيام": res["_days"],
+                    "السبب": res["reason"].apply(safe_str),
+                    "مرفق": res["attachment_name"].apply(lambda v: "📎" if safe_str(v) else "—"),
+                    "سجّله": res["created_by"].apply(safe_str),
+                })
+                st.dataframe(view, use_container_width=True, hide_index=True)
+
+                xls_buf = BytesIO()
+                view.to_excel(xls_buf, index=False)
+                st.download_button(
+                    "📥 تصدير السجل Excel",
+                    data=xls_buf.getvalue(),
+                    file_name=f"absence_log_{log_from.strftime('%Y%m%d')}_{log_to.strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="abs_log_xlsx_btn",
+                )
+
+                with st.expander("🗑️ حذف تسجيل"):
+                    del_opts = {
+                        f"{safe_str(r['name_ar'])} | {safe_str(r['record_type'])} | "
+                        f"{fmt_date(r['start_date'])} → {fmt_date(r['end_date'])} | {r['record_id']}": r["record_id"]
+                        for _, r in res.iterrows()
+                    }
+                    del_label = st.selectbox("اختر التسجيل", list(del_opts.keys()), index=None, key="abs_del_select")
+                    if st.button("🗑️ حذف التسجيل المحدد", use_container_width=True, key="abs_del_btn", disabled=not del_label):
+                        all_rec = load_absence_records()
+                        all_rec = all_rec[all_rec["record_id"] != del_opts[del_label]]
+                        save_absence_records(all_rec)
+                        st.success("تم الحذف")
+                        st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 # =========================
