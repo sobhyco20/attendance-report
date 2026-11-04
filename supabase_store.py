@@ -61,7 +61,11 @@ DATE_COLS = {"start_date", "end_date"}
 def _cfg():
     try:
         sec = st.secrets.get("supabase", {})
-        return sec.get("url", ""), sec.get("key", "")
+        url = str(sec.get("url", "")).strip()
+        # لو الرابط اتنسخ ومعاه مسار زيادة (زي /rest/v1/) نشيله — المطلوب الدومين بس
+        m = re.match(r"^(https?://[^/]+)", url)
+        url = m.group(1) if m else url
+        return url, str(sec.get("key", "")).strip()
     except Exception:
         return "", ""
 
