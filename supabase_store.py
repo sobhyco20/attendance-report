@@ -76,9 +76,14 @@ def is_enabled() -> bool:
 
 
 @st.cache_resource(show_spinner=False)
-def _client():
-    url, key = _cfg()
+def _client_for(url: str, key: str):
     return create_client(url, key)
+
+
+def _client():
+    # الاتصال بيتحفظ حسب الرابط والمفتاح — لو غيّرتهم في Secrets بيتعمل اتصال جديد تلقائيًا
+    url, key = _cfg()
+    return _client_for(url, key)
 
 
 def connection_status() -> tuple[bool, str]:
