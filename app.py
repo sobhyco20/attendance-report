@@ -12,7 +12,7 @@ import time
 import streamlit as st
 
 from attendance_engine import process_attendance, WEEKDAY_AR
-import sheets_store as gs
+import supabase_store as gs
 
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4
@@ -873,10 +873,10 @@ require_login("تقرير التأخير والغياب والخروج المب�
 # Helpers
 # =========================
 def load_employees_silent():
-    # لو الموقع متصل بالشيت: ناخد الموظفين من ورقة employees (أحدث نسخة)
+    # لو الموقع متصل بقاعدة البيانات: ناخد الموظفين منها
     if gs.is_enabled():
         try:
-            emp = gs.read_employees()
+            emp = gs.read_employees()          # من قاعدة البيانات
             if emp is not None and not emp.empty:
                 return emp
         except Exception:
@@ -1105,7 +1105,7 @@ def ensure_leaves_file():
 def load_leaves() -> pd.DataFrame:
     try:
         if gs.is_enabled():
-            df = gs.read_leaves()          # من Google Sheet مباشرة
+            df = gs.read_leaves()          # من قاعدة البيانات (Supabase)
         else:
             ensure_leaves_file()
             df = pd.read_excel(LEAVES_PATH)
@@ -1151,7 +1151,7 @@ def load_leaves() -> pd.DataFrame:
 
 def save_leaves(df: pd.DataFrame):
     if gs.is_enabled():
-        gs.save_leaves(df)                 # يكتب الفرق بس في Google Sheet
+        gs.save_leaves(df)                 # يكتب الفرق بس في قاعدة البيانات
         return
     ensure_leaves_file()
     out = df.copy()
@@ -1167,7 +1167,7 @@ def save_leaves(df: pd.DataFrame):
 def load_absence_records() -> pd.DataFrame:
     try:
         if gs.is_enabled():
-            df = gs.read_absences()        # من ورقة (الغياب والتأخير) مباشرة
+            df = gs.read_absences()        # من قاعدة البيانات (Supabase)
         else:
             if not os.path.exists(ABSENCES_PATH):
                 pd.DataFrame(columns=ABSENCE_COLUMNS).to_excel(ABSENCES_PATH, index=False)
@@ -1210,6 +1210,8 @@ def add_absence_record(record: dict):
 def save_absence_attachment(uploaded_file, employee_id: str, start_date) -> tuple[str, str]:
     if uploaded_file is None:
         return "", ""
+    if gs.is_enabled():
+        return gs.upload_attachment(uploaded_file, "absences", sanitize_filename(employee_id))
     ext = os.path.splitext(uploaded_file.name)[1] or ".bin"
     fname = (
         f"abs_{sanitize_filename(employee_id)}_"
@@ -1346,9 +1348,23 @@ def employee_option_label(row) -> str:
     return f"{safe_str(row.get('name_ar'))} — {fmt_id(row.get('employee_no') or row.get('employee_id'))}"
 
 
+def attachment_available(path: str) -> bool:
+    path = safe_str(path)
+    return bool(path) and (gs.is_cloud_attachment(path) or os.path.exists(path))
+
+
+def read_attachment(path: str) -> bytes:
+    if gs.is_cloud_attachment(path):
+        return gs.download_attachment(path)
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def save_leave_attachment(uploaded_file, employee_id: str, start_date, end_date) -> tuple[str, str]:
     if uploaded_file is None:
         return "", ""
+    if gs.is_enabled():
+        return gs.upload_attachment(uploaded_file, "leaves", sanitize_filename(employee_id))
     ext = os.path.splitext(uploaded_file.name)[1] or ".bin"
     fname = f"leave_{sanitize_filename(employee_id)}_{pd.to_datetime(start_date).strftime('%Y%m%d')}_{pd.to_datetime(end_date).strftime('%Y%m%d')}{ext}"
     path = os.path.join(LEAVE_ATTACHMENTS_DIR, fname)
@@ -3030,27 +3046,32 @@ def show_attachment_dialog_if_needed():
         path = safe_str(att.get("path", ""))
         name = safe_str(att.get("name", ""))
 
-        if path and os.path.exists(path):
+        if attachment_available(path):
             @st.dialog("📎 عرض المرفق")
             def open_attachment_dialog():
                 ext = os.path.splitext(path)[1].lower()
+                try:
+                    file_bytes = read_attachment(path)
+                except Exception as att_err:
+                    st.error(f"تعذّر فتح المرفق: {att_err}")
+                    file_bytes = b""
 
-                if ext in [".png", ".jpg", ".jpeg"]:
-                    st.image(path, caption=name or os.path.basename(path), use_container_width=True)
-                    with open(path, "rb") as f:
+                if ext in [".png", ".jpg", ".jpeg"] and file_bytes:
+                    st.image(file_bytes, caption=name or os.path.basename(path), use_container_width=True)
+                    if True:
                         st.download_button(
                             "تحميل الملف",
-                            data=f.read(),
+                            data=file_bytes,
                             file_name=name or os.path.basename(path),
                             use_container_width=True,
                             key=f"dlg_dl_img_{safe_str(att.get('leave_id', ''))}"
                         )
                 else:
                     st.info(name or os.path.basename(path))
-                    with open(path, "rb") as f:
+                    if file_bytes:
                         st.download_button(
                             "تحميل الملف",
-                            data=f.read(),
+                            data=file_bytes,
                             file_name=name or os.path.basename(path),
                             use_container_width=True,
                             key=f"dlg_dl_file_{safe_str(att.get('leave_id', ''))}"
@@ -3090,6 +3111,20 @@ with st.sidebar:
     _ok, _msg = gs.connection_status()
     if _ok:
         st.success(f"🟢 {_msg} — الحفظ دائم")
+        with st.expander("⚙️ نقل البيانات من Google Sheet"):
+            st.caption(
+                "نزّل الشيت من (ملف ← تنزيل ← Microsoft Excel) وارفعه هنا. "
+                "الموظفين والإجازات والغياب هيتنقلوا لقاعدة البيانات. "
+                "السجل الموجود بنفس الرقم بيتحدّث، ومفيش حاجة بتتمسح."
+            )
+            import_file = st.file_uploader("ملف Excel للشيت", type=["xlsx"], key="sb_import_file")
+            if st.button("🔄 نقل البيانات", use_container_width=True, key="sb_import_btn", disabled=import_file is None):
+                try:
+                    with st.spinner("جاري النقل..."):
+                        res = gs.import_from_excel(import_file)
+                    st.success("✅ تم النقل: " + " | ".join(f"{k}: {v}" for k, v in res.items()))
+                except Exception as imp_err:
+                    st.error(f"❌ تعذّر النقل: {imp_err}")
     else:
         st.warning(f"🟡 حفظ مؤقت (محلي) — {_msg}")
 
@@ -3107,7 +3142,7 @@ with st.sidebar:
     st.caption("📊 **البصمة والحضور:** تقرير البصمة وسجل الغياب والأعذار.")
     st.caption("🏖️ **الإجازات:** تسجيل وعرض وتعديل الإجازات وتقارير المرضية.")
     st.caption("📄 **تقرير الموظف:** تقرير إجازات موظف واحد لفترة محددة.")
-    st.caption("📝 **التسجيل:** من الموقع أو من Google Sheet — الاتنين بيكتبوا في نفس الشيت.")
+    st.caption("📝 **التسجيل:** كل التسجيل من الموقع، ويتحفظ في قاعدة البيانات.")
 
     st.markdown(
         """
@@ -3161,39 +3196,6 @@ with leave_root_tab:
             '<div class="card"><div class="card-title">➕ تسجيل إجازة جديدة</div>',
             unsafe_allow_html=True
         )
-
-        # =========================================================
-        # رفع ملف إجازات كامل
-        # =========================================================
-
-        st.markdown("## 📂 رفع ملف إجازات كامل")
-
-        uploaded_leaves_file = st.file_uploader(
-            "ارفع ملف الإجازات",
-            type=["xlsx", "xls"],
-            key="bulk_leaves_upload"
-        )
-
-        if uploaded_leaves_file is not None:
-
-            try:
-
-                bulk_df = pd.read_excel(
-                    uploaded_leaves_file
-                )
-
-                st.success(
-                    "✅ تم رفع الملف بنجاح"
-                )
-
-                st.dataframe(
-                    bulk_df,
-                    use_container_width=True
-                )
-
-            except Exception as e:
-
-                st.error(f"❌ {e}")
 
         if employee_lookup.empty:
 
@@ -3419,7 +3421,7 @@ with leave_root_tab:
                                     st.write(f"📅 {fmt_date(r.get('start_date'))} → {fmt_date(r.get('end_date'))}")
 
                                 with a4:
-                                    has_attachment = bool(safe_str(r.get("attachment_path", ""))) and os.path.exists(safe_str(r.get("attachment_path", "")))
+                                    has_attachment = attachment_available(r.get("attachment_path", ""))
                                     if has_attachment:
                                         if st.button("📎", key=f"att_btn_{safe_str(r.get('leave_id'))}_{idx}", use_container_width=True):
                                             st.session_state["open_attachment"] = {
@@ -4154,13 +4156,13 @@ with att_root_tab:
                         st.caption("ℹ️ لتحديد نوع أيام الغياب غير المسجلة، سجّلها من تبويب (📝 تسجيل غياب / تأخير).")
 
     # -----------------------------------------------------
-    # 2) تسجيل غياب / تأخير  (يُحفظ في Google Sheet)
+    # 2) تسجيل غياب / تأخير  (يُحفظ في قاعدة البيانات)
     # -----------------------------------------------------
     with abs_register_tab:
         st.markdown('<div class="card"><div class="card-title">📝 تسجيل غياب أو تأخير</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="edit-hint">ابحث عن الموظف بالاسم أو الرقم الوظيفي، واختر النوع والسبب. '
-            'التسجيل بيتحفظ في ورقة (الغياب والتأخير) ويظهر في تقرير البصمة وملف PDF.</div>',
+            'التسجيل بيتحفظ في قاعدة البيانات ويظهر في تقرير البصمة وملف PDF.</div>',
             unsafe_allow_html=True,
         )
 
@@ -4195,6 +4197,11 @@ with att_root_tab:
                     ab_reason_free = st.text_input(
                         "أو اكتب السبب بنفسك", placeholder="لو كتبت هنا هيتسجل بدل السبب المقترح"
                     )
+                ab_file = st.file_uploader(
+                    "إرفاق مستند (اختياري)",
+                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx"],
+                    key="abs_attachment_upload",
+                )
                 ab_submit = st.form_submit_button("💾 حفظ التسجيل", use_container_width=True)
 
             if ab_submit:
@@ -4214,6 +4221,9 @@ with att_root_tab:
                     else:
                         try:
                             existing = load_absence_records()
+                            att_name, att_path = save_absence_attachment(
+                                ab_file, fmt_id(emp_rec.get("employee_id")), ab_from
+                            )
                             add_absence_record({
                                 "record_id": f"AB-{gs.next_seq(existing.get('record_id', []), 'AB')}",
                                 "employee_id": fmt_id(emp_rec.get("employee_id")),
@@ -4224,8 +4234,8 @@ with att_root_tab:
                                 "start_date": pd.Timestamp(ab_from),
                                 "end_date": pd.Timestamp(ab_to),
                                 "reason": ab_reason,
-                                "attachment_name": "",
-                                "attachment_path": "",
+                                "attachment_name": att_name,
+                                "attachment_path": att_path,
                                 "created_at": pd.Timestamp.now(),
                                 "created_by": st.session_state.get("login_user"),
                             })
