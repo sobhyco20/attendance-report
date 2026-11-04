@@ -5,5 +5,4 @@ reportlab
 arabic-reshaper
 python-bidi
 streamlit-cookies-manager
-gspread
-google-auth
+supabase
